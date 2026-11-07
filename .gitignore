@@ -1,0 +1,24 @@
+# --- personal / secret: never commit -------------------------------------------
+windows/config.json
+windows/config.json.bak
+windows/config.json.tmp
+windows/.editor_token
+windows/icons/
+windows/*.log
+windows/Claude outputs/
+
+# --- build output: publish as GitHub Releases instead ----------------------------
+share/
+*.zip
+*.ipa
+ios/build/
+ios/Payload/
+ios/USBDeck.xcodeproj/
+
+# --- tooling ----------------------------------------------------------------------
+__pycache__/
+*.pyc
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

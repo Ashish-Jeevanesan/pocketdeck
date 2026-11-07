@@ -1,0 +1,48 @@
+name: Build USB Deck (unsigned IPA)
+
+on:
+  push:
+    paths: ["ios/**", ".github/workflows/build-ios.yml"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Pick Xcode
+        run: |
+          # Prefer Xcode 16.x (comfortably supports an iOS 15 deployment target)
+          X=$(ls -d /Applications/Xcode_16*.app 2>/dev/null | sort -V | tail -1)
+          if [ -n "$X" ]; then sudo xcode-select -s "$X"; fi
+          xcodebuild -version
+
+      - name: Generate Xcode project
+        working-directory: ios
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      - name: Build
+        working-directory: ios
+        run: |
+          xcodebuild -project USBDeck.xcodeproj -scheme USBDeck \
+            -configuration Release -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            build
+
+      - name: Package IPA
+        working-directory: ios
+        run: |
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/USBDeck.app Payload/
+          zip -qr USBDeck.ipa Payload
+          ls -lh USBDeck.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: USBDeck-ipa
+          path: ios/USBDeck.ipa

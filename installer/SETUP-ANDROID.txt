@@ -1,0 +1,69 @@
+POCKETDECK - turn an Android phone into a Stream Deck for a Windows PC
+=====================================================================
+
+The phone shows big buttons. Tapping one opens apps or folders on the PC, controls
+Teams (mute, camera, share screen...), and controls music, with a now-playing notch.
+The phone talks to the PC only through the USB cable or Android's "Wireless debugging".
+Other devices on the network can't use it.
+
+You need: a Windows 10/11 PC, an Android 11+ phone, and a USB data cable.
+
+
+PART 1 - PC SETUP (about 3 minutes)
+-----------------------------------
+1. Unzip this folder anywhere (for example, Downloads).
+2. Double-click "Install PocketDeck.bat".
+   - If Python is missing it installs it, or asks you to get it from python.org.
+   - It downloads Google's adb tool, installs the music add-on, and puts a
+     "USB Deck" shortcut on the desktop.
+   - If Windows SmartScreen warns you, click "More info" > "Run anyway".
+3. The USB Deck window opens on the PC. That's where you edit the buttons.
+
+
+PART 2 - PHONE SETUP (one time)
+-------------------------------
+1. Turn on Developer options:
+   Settings > About phone > Software information > tap "Build number" 7 times.
+   (On Pixel and others: Settings > About phone > tap "Build number" 7 times.)
+2. Settings > Developer options > turn ON "USB debugging".
+3. Plug the phone into the PC with the cable. Unlock the phone and tap
+   "Allow" (tick "Always allow from this computer").
+4. On the phone, open Chrome and go to:      http://127.0.0.1:2346
+   (type it exactly; it only works while the PC app is running and the phone is linked)
+5. Chrome menu (three dots) > "Add to Home screen" > "Install".
+   You now have a "USB Deck" app icon. Open it: the dot at the top turns green.
+
+
+OPTIONAL - WITHOUT THE CABLE (Wireless debugging, same Wi-Fi)
+--------------------------------------------------------------
+1. Phone: Developer options > "Wireless debugging" > ON > tap the words
+   "Wireless debugging" > "Pair device with pairing code".
+2. PC: open a Command Prompt and run (use the numbers the phone shows):
+      %USERPROFILE%\platform-tools\adb pair 192.168.x.x:PPPPP 123456
+3. Done. At home the PC finds the phone by itself. On office networks that block
+   discovery, type the "IP address & Port" from the Wireless debugging screen
+   into the box at the top of the PC app and press Connect.
+   (The port changes every time Wireless debugging is switched off and on.)
+
+
+DAILY USE
+---------
+- Double-click "USB Deck" on the desktop (it starts everything), then open the
+  USB Deck app on the phone.
+- Edit buttons in the PC window: drag to reorder, click a tile to change its
+  label, picture (real app icons) and what it does. Changes show on the phone
+  within about 2 seconds.
+- Phone: swipe between pages, the rotate button locks portrait/landscape, and
+  the power button pauses the deck. While music plays, tap the black pill at
+  the top for the full player.
+
+
+TROUBLESHOOTING
+---------------
+- Phone says "Not connected": make sure the PC app is running, and that the
+  cable is in (and the phone allowed USB debugging) or Wireless debugging is on.
+- Phone shows "Check USB port": lint or moisture in the phone's port. Clean it
+  gently with a wooden toothpick and try again.
+- A button flashes red: the PC app's log (bottom of its window) says why.
+- Teams buttons need the Teams meeting window open on the PC.
+- Work laptops: IT may block installing Python or USB debugging.

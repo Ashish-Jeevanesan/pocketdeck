@@ -1,0 +1,723 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#05060a">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" href="/icon-192.png">
+<title>USB Deck</title>
+<style>
+  /* ---------------------------------------------------------------- tokens
+     Apple-style: translucent "glass" layers floating over a soft wallpaper,
+     instant press feedback, critically-damped (no-bounce) motion. */
+  :root {
+    --gap: 12px;
+    --ink: #fff; --ink-2: rgba(255,255,255,.72); --ink-3: rgba(255,255,255,.48);
+    --glass: rgba(255,255,255,.10);
+    --glass-strong: rgba(30,30,34,.74);
+    --edge: rgba(255,255,255,.16);
+    --hi: rgba(255,255,255,.30);
+    --blur: blur(24px) saturate(180%);
+    --ease-out: cubic-bezier(.2,.9,.25,1);        /* ≈ spring, damping 1.0, response .35 */
+    --ease-press: cubic-bezier(.3,.7,.4,1);
+    --ok: #34c759; --bad: #ff453a;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html {
+    height: 100%; color: var(--ink);
+    background:
+      radial-gradient(110% 70% at 0% 0%, #1f4f8f 0%, rgba(31,79,143,0) 60%),
+      radial-gradient(90% 60% at 100% 25%, #0f6b6b 0%, rgba(15,107,107,0) 55%),
+      radial-gradient(120% 80% at 90% 100%, #5b2a86 0%, rgba(91,42,134,0) 60%),
+      radial-gradient(90% 60% at 10% 95%, #8a3b4b 0%, rgba(138,59,75,0) 55%),
+      #05060a;
+    background-attachment: fixed;
+  }
+  html, body {
+    margin: 0; font: 15px/1.35 system-ui, -apple-system, "SF Pro Text", Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased; overscroll-behavior: none;
+    user-select: none; -webkit-user-select: none; touch-action: manipulation;
+  }
+  body { height: 100%; display: flex; flex-direction: column; gap: 10px;
+    padding: calc(env(safe-area-inset-top) + 10px) 14px calc(env(safe-area-inset-bottom) + 10px); }
+
+  /* ---------------------------------------------------------------- materials */
+  .glass {
+    background: var(--glass); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
+    box-shadow: inset 0 1px 0 var(--hi), inset 0 0 0 .5px var(--edge), 0 8px 24px -12px rgba(0,0,0,.55);
+  }
+
+  /* ---------------------------------------------------------------- top bar */
+  header { display: flex; align-items: center; gap: 8px; min-height: 40px; }
+  .pill { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 12px; border-radius: 17px;
+    font-size: 13px; font-weight: 600; letter-spacing: -.005em; color: var(--ink-2); white-space: nowrap; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--bad); box-shadow: 0 0 8px var(--bad); transition: background .3s, box-shadow .3s; }
+  .dot.on { background: var(--ok); box-shadow: 0 0 8px var(--ok); }
+  .dot.pause { background: #ff9f0a; box-shadow: 0 0 8px #ff9f0a; }
+  #title { flex: 1; text-align: center; font-size: 17px; font-weight: 700; letter-spacing: -.02em;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; transition: opacity .2s; }
+  .icon-btn { height: 34px; min-width: 34px; border-radius: 17px; border: 0; color: var(--ink);
+    display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 0 10px; font: 600 12px system-ui, sans-serif;
+    transition: transform .42s var(--ease-out), background .2s; }
+  .icon-btn svg { width: 17px; height: 17px; }
+  .icon-btn:active { transform: scale(.9); transition-duration: .09s; transition-timing-function: var(--ease-press); }
+
+  /* ---------------------------------------------------------------- pages + tiles */
+  #pages { flex: 1; display: flex; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: none; min-height: 0; }
+  #pages::-webkit-scrollbar { display: none; }
+  .page { flex: 0 0 100%; scroll-snap-align: start; scroll-snap-stop: always; display: grid; gap: var(--gap); align-content: start; padding: 2px 1px; }
+  body.offline #pages { opacity: .4; filter: saturate(.4); pointer-events: none; }
+  #pages { transition: opacity .35s, filter .35s; }
+
+  .key {
+    --c: #48484a;
+    position: relative; isolation: isolate; border-radius: 26px; overflow: hidden;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; padding: 8px;
+    min-height: 72px; color: #fff;
+    background: color-mix(in srgb, var(--c) 58%, transparent);
+    -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
+    box-shadow: inset 0 1px 0 var(--hi), inset 0 0 0 .5px var(--edge), 0 14px 28px -16px rgba(0,0,0,.7);
+    transform: scale(1);
+    /* release: settle back smoothly, no overshoot (a tap carries no momentum) */
+    transition: transform .42s var(--ease-out);
+  }
+  /* soft top sheen, like light catching the material */
+  .key::before { content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none;
+    background: linear-gradient(180deg, rgba(255,255,255,.18) 0%, rgba(255,255,255,0) 46%); }
+  /* press highlight layer */
+  .key::after { content: ""; position: absolute; inset: 0; border-radius: inherit; pointer-events: none;
+    background: rgba(255,255,255,.16); opacity: 0; transition: opacity .3s; }
+  /* press: respond on touch-down, instantly */
+  .key.down { transform: scale(.93); transition: transform .09s var(--ease-press); }
+  .key.down::after { opacity: 1; transition: opacity .06s; }
+  .key.ok { animation: ok .6s var(--ease-out); }
+  .key.err { animation: shake .42s var(--ease-out); }
+  @keyframes ok { 0% { box-shadow: inset 0 1px 0 var(--hi), inset 0 0 0 .5px var(--edge), 0 0 0 0 rgba(52,199,89,.0); }
+                  25% { box-shadow: inset 0 1px 0 var(--hi), inset 0 0 0 2px var(--ok), 0 0 22px 2px rgba(52,199,89,.55); }
+                  100% { box-shadow: inset 0 1px 0 var(--hi), inset 0 0 0 .5px var(--edge), 0 14px 28px -16px rgba(0,0,0,.7); } }
+  @keyframes shake { 0%,100% { transform: translateX(0); } 20% { transform: translateX(-7px); } 40% { transform: translateX(6px); }
+                     60% { transform: translateX(-4px); } 80% { transform: translateX(2px); } }
+  .key.err { box-shadow: inset 0 1px 0 var(--hi), inset 0 0 0 2px var(--bad), 0 0 20px rgba(255,69,58,.45); }
+
+  .key .emo { font-size: 34px; line-height: 1; filter: drop-shadow(0 3px 6px rgba(0,0,0,.35)); }
+  .key img.ico { width: 48%; max-width: 104px; aspect-ratio: 1; object-fit: contain; pointer-events: none; -webkit-user-drag: none;
+    filter: drop-shadow(0 4px 8px rgba(0,0,0,.4)); }
+  .key .lbl { font-size: 13px; font-weight: 600; letter-spacing: -.01em; text-align: center; line-height: 1.15;
+    text-shadow: 0 1px 2px rgba(0,0,0,.35); overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+
+  /* ---------------------------------------------------------------- page dots */
+  nav { align-self: center; display: flex; gap: 9px; align-items: center; padding: 9px 14px; border-radius: 16px; min-height: 26px; }
+  nav:empty { display: none; }
+  nav button { width: 8px; height: 8px; padding: 0; border: 0; border-radius: 4px; background: rgba(255,255,255,.35);
+    transition: width .42s var(--ease-out), background .25s; }
+  nav button.sel { width: 22px; background: #fff; }
+
+  /* ---------------------------------------------------------------- banner (top, like iOS) */
+  #msg { position: fixed; left: 50%; top: calc(env(safe-area-inset-top) + 10px); z-index: 9;
+    max-width: calc(100% - 40px); padding: 11px 18px; border-radius: 22px; font-size: 14px; font-weight: 600; text-align: center;
+    background: var(--glass-strong); -webkit-backdrop-filter: var(--blur); backdrop-filter: var(--blur);
+    box-shadow: inset 0 1px 0 var(--hi), inset 0 0 0 .5px var(--edge), 0 12px 30px -10px rgba(0,0,0,.6);
+    transform: translate(-50%, -160%); opacity: 0; transition: transform .45s var(--ease-out), opacity .3s; pointer-events: none; }
+  #msg.show { transform: translate(-50%, 0); opacity: 1; }
+
+  /* ---------------------------------------------------------------- sheets & cards */
+  .scrim { position: fixed; inset: 0; z-index: 5; background: rgba(0,0,0,.38); opacity: 0; pointer-events: none;
+    transition: opacity .35s var(--ease-out); display: flex; align-items: center; justify-content: center; padding: 20px; }
+  .scrim.show { opacity: 1; pointer-events: auto; }
+  .card { width: min(340px, 100%); border-radius: 28px; padding: 26px 22px 20px; text-align: center;
+    background: var(--glass-strong); -webkit-backdrop-filter: blur(30px) saturate(180%); backdrop-filter: blur(30px) saturate(180%);
+    box-shadow: inset 0 1px 0 var(--hi), inset 0 0 0 .5px var(--edge), 0 30px 60px -20px rgba(0,0,0,.7);
+    transform: scale(.94); opacity: 0; transition: transform .45s var(--ease-out), opacity .3s; }
+  .scrim.show .card { transform: scale(1); opacity: 1; }
+  .card .glyph { font-size: 40px; margin-bottom: 6px; }
+  .card h2 { margin: 0 0 6px; font-size: 20px; letter-spacing: -.02em; }
+  .card p { margin: 0 0 18px; color: var(--ink-2); font-size: 14px; line-height: 1.45; }
+  /* action sheet slides up from the bottom and leaves the same way */
+  .scrim.sheet { align-items: flex-end; padding: 0 10px calc(env(safe-area-inset-bottom) + 10px); }
+  .sheet .stack { width: min(420px, 100%); display: flex; flex-direction: column; gap: 8px;
+    transform: translateY(110%); transition: transform .45s var(--ease-out); }
+  .scrim.sheet.show .stack { transform: translateY(0); }
+  .sheet .group { border-radius: 16px; overflow: hidden; background: var(--glass-strong);
+    -webkit-backdrop-filter: blur(30px) saturate(180%); backdrop-filter: blur(30px) saturate(180%);
+    box-shadow: inset 0 1px 0 var(--hi), inset 0 0 0 .5px var(--edge); }
+  .sheet .head { padding: 14px 18px; text-align: center; color: var(--ink-3); font-size: 13px; line-height: 1.4; border-bottom: .5px solid var(--edge); }
+  .sheet .head b { display: block; color: var(--ink-2); font-size: 13px; margin-bottom: 2px; }
+  .row-btn { width: 100%; border: 0; background: transparent; color: #0a84ff; font: 400 19px system-ui, sans-serif; padding: 15px; }
+  .row-btn.destructive { color: var(--bad); }
+  .row-btn.bold { font-weight: 600; }
+  .row-btn:active { background: rgba(255,255,255,.12); }
+  .btn { border: 0; border-radius: 14px; padding: 13px 26px; font: 600 16px system-ui, sans-serif; color: #fff; width: 100%;
+    transition: transform .42s var(--ease-out); }
+  .btn:active { transform: scale(.96); transition: transform .09s var(--ease-press); }
+  .btn.go { background: #0a84ff; } .btn.ghost { background: rgba(255,255,255,.14); }
+
+  #empty { margin: auto; text-align: center; color: var(--ink-2); line-height: 1.5; padding: 26px 22px; border-radius: 26px; max-width: 320px; }
+
+
+  /* ---------------------------------------------------------------- now-playing island
+     Pure black like the iPhone Dynamic Island; size is driven by a JS spring so it can be
+     grabbed and re-targeted mid-flight. Content cross-fades between compact and expanded. */
+  .island { position: fixed; top: calc(env(safe-area-inset-top) + 10px); left: 50%; z-index: 7;
+    width: 120px; height: 36px; border-radius: 18px; transform: translateX(-50%); overflow: hidden;
+    background: #000; color: #fff; display: none; opacity: 0;
+    box-shadow: 0 0 0 .5px rgba(255,255,255,.10), 0 10px 30px -8px rgba(0,0,0,.8), 0 0 28px -6px var(--tint-glow, transparent);
+    transition: opacity .28s var(--ease-out), box-shadow .6s; will-change: width, height; touch-action: none; }
+  .island.on { display: block; }
+  .island.vis { opacity: 1; }
+  .island::before { content: ""; position: absolute; inset: 0; pointer-events: none; opacity: 0; transition: opacity .4s;
+    background: radial-gradient(120% 90% at 15% 0%, var(--tint-soft, transparent) 0%, transparent 65%); }
+  .island.big::before { opacity: 1; }
+  .isl-compact { position: absolute; inset: 0; display: flex; align-items: center; gap: 8px; padding: 0 8px 0 6px;
+    transition: opacity .16s; }
+  .island.big .isl-compact { opacity: 0; pointer-events: none; transition: opacity .1s; }
+  .c-art { width: 24px; height: 24px; border-radius: 7px; object-fit: cover; flex: none; background: #222; }
+  .c-title { flex: 1; min-width: 0; font-size: 12.5px; font-weight: 600; letter-spacing: -.01em; white-space: nowrap;
+    overflow: hidden; text-overflow: ellipsis; color: rgba(255,255,255,.88); }
+  .eq { display: flex; gap: 2px; align-items: center; height: 16px; flex: none; margin-left: auto; }
+  .eq i { width: 3px; height: 100%; border-radius: 2px; background: var(--tint, #fff); transform-origin: center;
+    transform: scaleY(.3); }
+  .island.playing .eq i { animation: eq 1s ease-in-out infinite; }
+  .island.playing .eq i:nth-child(2) { animation-duration: .8s; animation-delay: -.3s; }
+  .island.playing .eq i:nth-child(3) { animation-duration: 1.15s; animation-delay: -.6s; }
+  .island.playing .eq i:nth-child(4) { animation-duration: .9s; animation-delay: -.15s; }
+  @keyframes eq { 0%,100% { transform: scaleY(.28); } 50% { transform: scaleY(1); } }
+
+  .isl-full { position: absolute; left: 0; top: 0; width: var(--fw, 360px); padding: 20px 20px 16px;
+    opacity: 0; transform: scale(.94); transform-origin: top center; pointer-events: none;
+    transition: opacity .12s, transform .3s var(--ease-out); }
+  .island.big .isl-full { opacity: 1; transform: scale(1); pointer-events: auto; transition: opacity .28s .08s, transform .45s var(--ease-out) .04s; }
+  .f-top { display: flex; align-items: center; gap: 14px; }
+  .f-art { width: 64px; height: 64px; border-radius: 14px; object-fit: cover; flex: none; background: #1c1c1e;
+    box-shadow: 0 8px 20px -6px rgba(0,0,0,.7); }
+  .f-meta { flex: 1; min-width: 0; }
+  .f-title { font-size: 17px; font-weight: 700; letter-spacing: -.02em; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .f-artist { font-size: 14px; color: rgba(255,255,255,.62); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .f-app { width: 22px; height: 22px; border-radius: 6px; flex: none; opacity: .9; }
+  .f-app[src=""] { display: none; }
+  .scrub { margin-top: 18px; touch-action: none; padding: 8px 0 2px; }
+  .bar { position: relative; height: 6px; border-radius: 3px; background: rgba(255,255,255,.18); overflow: hidden;
+    transition: height .25s var(--ease-out); }
+  .scrub.active .bar { height: 11px; border-radius: 6px; }
+  .fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: rgba(255,255,255,.92); border-radius: inherit; }
+  .scrub.off { opacity: .35; pointer-events: none; }
+  .times { display: flex; justify-content: space-between; margin-top: 7px; font-size: 11.5px; font-weight: 600;
+    color: rgba(255,255,255,.5); font-variant-numeric: tabular-nums; transition: color .2s; }
+  .scrub.active .times { color: rgba(255,255,255,.85); }
+  .ctrls { display: flex; align-items: center; justify-content: space-between; margin-top: 10px; padding: 0 2px; }
+  .cb { width: 46px; height: 46px; border: 0; border-radius: 23px; background: transparent; color: #fff;
+    display: inline-flex; align-items: center; justify-content: center; position: relative;
+    transition: transform .42s var(--ease-out), background .25s, opacity .2s; }
+  .cb::after { content: ""; position: absolute; inset: 0; border-radius: inherit; background: rgba(255,255,255,.14); opacity: 0; transition: opacity .3s; }
+  .cb:active { transform: scale(.86); transition: transform .08s var(--ease-press); }
+  .cb:active::after { opacity: 1; transition: opacity .05s; }
+  .cb svg { width: 26px; height: 26px; }
+  .cb.small svg { width: 21px; height: 21px; opacity: .75; }
+  .cb.small.lit svg { opacity: 1; color: var(--tint, #fff); }
+  .cb.small.lit { background: rgba(255,255,255,.12); }
+  .cb.big { width: 62px; height: 62px; border-radius: 31px; }
+  .cb.big svg { width: 34px; height: 34px; }
+  .cb[hidden] { visibility: hidden; display: inline-flex; }
+  .cb .sw { position: absolute; transition: transform .35s var(--ease-out), opacity .2s; }
+  .cb .sw.out { transform: scale(.4); opacity: 0; }
+  .isl-scrim { position: fixed; inset: 0; z-index: 6; background: rgba(0,0,0,.45);
+    -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+    opacity: 0; pointer-events: none; transition: opacity .35s var(--ease-out); }
+  .isl-scrim.show { opacity: 1; pointer-events: auto; }
+  header #title.hide { opacity: 0; }
+  @media (prefers-reduced-motion: reduce) {
+    .island.playing .eq i { animation: none; transform: scaleY(.7); }
+    .isl-full, .island.big .isl-full { transform: none !important; }
+  }
+
+  /* ---------------------------------------------------------------- rotation fallback */
+  html.rot-cw body, html.rot-ccw body { position: absolute; top: 0; left: 0; width: 100vh; height: 100vw; }
+  html.rot-cw body { transform: translateX(100vw) rotate(90deg); transform-origin: top left; }
+  html.rot-ccw body { transform: translateY(100vh) rotate(-90deg); transform-origin: top left; }
+
+  /* ---------------------------------------------------------------- accessibility */
+  @media (prefers-reduced-motion: reduce) {
+    .key, .key.down, .icon-btn, .btn, nav button, #msg, .card, .sheet .stack { transition: opacity .2s !important; transform: none !important; }
+    .key.ok, .key.err { animation: none; }
+    #msg { transform: translate(-50%, 0) !important; }
+  }
+  @media (prefers-reduced-transparency: reduce) {
+    .glass, .key, #msg, .card, .sheet .group { -webkit-backdrop-filter: none; backdrop-filter: none; }
+    .glass, #msg, .card, .sheet .group { background: #1c1c1e; }
+    .key { background: var(--c); }
+  }
+  @media (prefers-contrast: more) {
+    .key, .glass, .card { box-shadow: inset 0 0 0 1.5px rgba(255,255,255,.7); }
+  }
+</style>
+</head>
+<body class="offline">
+<header>
+  <span class="pill glass"><span class="dot" id="dot"></span><span id="status">Connecting…</span></span>
+  <span id="title">USB Deck</span>
+  <button class="icon-btn glass" id="rotate" aria-label="Rotate screen">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 1 0-2.3 5.7"/><path d="M20 4v7h-7"/></svg>
+    <span id="rotLabel">Auto</span></button>
+  <button class="icon-btn glass" id="power" aria-label="Pause the deck">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 3v9"/><path d="M6.3 6.8a8 8 0 1 0 11.4 0"/></svg></button>
+</header>
+<div id="pages"><div id="empty" class="glass">Waiting for your laptop…<br>Keep Wireless debugging (or the USB cable) connected.</div></div>
+<nav id="nav" class="glass"></nav>
+<div id="msg"></div>
+<div class="isl-scrim" id="islScrim"></div>
+<div class="island" id="island" role="button" aria-label="Now playing">
+  <div class="isl-compact"><img class="c-art" id="cArt" alt=""><div class="c-title" id="cTitle"></div>
+    <div class="eq"><i></i><i></i><i></i><i></i></div></div>
+  <div class="isl-full" id="islFull">
+    <div class="f-top"><img class="f-art" id="fArt" alt="">
+      <div class="f-meta"><div class="f-title" id="fTitle"></div><div class="f-artist" id="fArtist"></div></div>
+      <img class="f-app" id="fApp" alt="" src=""></div>
+    <div class="scrub" id="scrub"><div class="bar" id="bar"><div class="fill" id="fill"></div></div>
+      <div class="times"><span id="tCur">0:00</span><span id="tRem">-0:00</span></div></div>
+    <div class="ctrls">
+      <button class="cb small" id="mShuffle" aria-label="Shuffle"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5"/><path d="M4 20 21 3"/><path d="M21 16v5h-5"/><path d="m15 15 6 6"/><path d="M4 4l5 5"/></svg></button>
+      <button class="cb" id="mPrev" aria-label="Previous"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 5h2v14H6zM20 5.5v13a.8.8 0 0 1-1.2.7L9.5 12.7a.8.8 0 0 1 0-1.4l9.3-6.5a.8.8 0 0 1 1.2.7z"/></svg></button>
+      <button class="cb big" id="mPlay" aria-label="Play or pause">
+        <svg class="sw" id="icPause" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4.5" width="4.2" height="15" rx="1.3"/><rect x="13.8" y="4.5" width="4.2" height="15" rx="1.3"/></svg>
+        <svg class="sw out" id="icPlay" viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.9v14.2a1 1 0 0 0 1.5.86l11.6-7.1a1 1 0 0 0 0-1.72L8.5 4.04A1 1 0 0 0 7 4.9z"/></svg></button>
+      <button class="cb" id="mNext" aria-label="Next"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 5h2v14h-2zM4 5.5v13a.8.8 0 0 0 1.2.7l9.3-6.5a.8.8 0 0 0 0-1.4L5.2 4.8A.8.8 0 0 0 4 5.5z"/></svg></button>
+      <button class="cb small" id="mRepeat" aria-label="Repeat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m17 2 4 4-4 4"/><path d="M3 11v-1a4 4 0 0 1 4-4h14"/><path d="m7 22-4-4 4-4"/><path d="M21 13v1a4 4 0 0 1-4 4H3"/></svg></button>
+    </div>
+  </div>
+</div>
+
+
+<div class="scrim sheet" id="ask">
+  <div class="stack">
+    <div class="group">
+      <div class="head"><b>Pause the deck?</b>Buttons stop working until you resume here or from the laptop app.</div>
+      <button class="row-btn destructive" id="doPause">Pause Deck</button>
+    </div>
+    <div class="group"><button class="row-btn bold" id="cancelPause">Cancel</button></div>
+  </div>
+</div>
+<div class="scrim sheet" id="choose">
+  <div class="stack">
+    <div class="group">
+      <div class="head"><b id="chooseTitle">Already open</b>Switch to the window that's open, or open another one?</div>
+      <button class="row-btn bold" id="chooseSwitch">Switch to It</button>
+      <button class="row-btn" id="chooseNew" style="border-top:.5px solid var(--edge)">Open New Window</button>
+    </div>
+    <div class="group"><button class="row-btn bold" id="chooseCancel">Cancel</button></div>
+  </div>
+</div>
+<div class="scrim" id="paused"><div class="card">
+  <div class="glyph">⏸</div><h2>Deck paused</h2><p id="pausedWhy">Buttons are switched off.</p>
+  <button class="btn go" id="doResume">Resume</button></div></div>
+<div class="scrim" id="gone"><div class="card">
+  <div class="glyph">🔌</div><h2>Not connected</h2>
+  <p>Your laptop isn't reachable. Make sure the USB Deck agent is running and that <b>Wireless debugging</b> or the USB cable is on. If you pressed Disconnect on the laptop, press <b>Reconnect</b> there.</p>
+  <button class="btn ghost" id="retry">Try Again</button></div></div>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  let layout = null, version = null, online = false, failCount = 0, msgTimer, paused = false;
+  const buzz = p => { try { navigator.vibrate && navigator.vibrate(p); } catch (e) {} };
+
+  function toast(t) { const m = $("msg"); m.textContent = t; m.classList.add("show");
+    clearTimeout(msgTimer); msgTimer = setTimeout(() => m.classList.remove("show"), 2600); }
+
+  function setOnline(v) {
+    online = v; document.body.classList.toggle("offline", !v);
+    $("dot").classList.toggle("on", v && !paused);
+    if (!paused) $("status").textContent = v ? "Connected" : "Offline";
+    $("gone").classList.toggle("show", !v && failCount >= 4);
+  }
+  function setPaused(p, by) {
+    paused = !!p;
+    $("paused").classList.toggle("show", paused);
+    $("pausedWhy").textContent = by === "laptop" ? "Paused from the laptop. Buttons are switched off." : "Buttons are switched off.";
+    $("dot").classList.toggle("pause", paused); $("dot").classList.toggle("on", online && !paused);
+    $("status").textContent = paused ? "Paused" : online ? "Connected" : "Offline";
+  }
+  async function control(action) {
+    try { const r = await api("/api/control", { method: "POST", headers: { "Content-Type": "application/json", "X-Deck": "1" },
+            body: JSON.stringify({ action }) }); setPaused(r.paused, r.paused_by); buzz(10); }
+    catch (e) { toast("Laptop not reachable"); }
+  }
+  $("power").onclick = () => $("ask").classList.add("show");
+  $("ask").onclick = e => { if (e.target === $("ask")) $("ask").classList.remove("show"); };   // tap outside to dismiss
+  $("cancelPause").onclick = () => $("ask").classList.remove("show");
+  $("doPause").onclick = () => { $("ask").classList.remove("show"); control("pause"); };
+  $("doResume").onclick = () => control("resume");
+  $("retry").onclick = () => { failCount = 0; $("gone").classList.remove("show"); heartbeat(true); };
+
+  async function api(path, opts = {}) {
+    const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), opts.timeout || 4000);
+    try { const r = await fetch(path, { ...opts, signal: ctl.signal, cache: "no-store" });
+          if (!r.ok) throw new Error("HTTP " + r.status); return await r.json(); }
+    finally { clearTimeout(t); }
+  }
+
+  // ------------------------------------------------------------ rotation
+  // Auto -> Portrait -> Landscape. Uses a real orientation lock when Chrome allows it
+  // (installed app / full screen); otherwise rotates the page itself.
+  const MODES = ["auto", "portrait", "landscape"];
+  let rot = "auto";
+  try { rot = localStorage.getItem("deck.rotate") || "auto"; } catch (e) {}
+  function physLandscape() { return innerWidth > innerHeight; }   // CSS rotation does not change this
+  function isLandscape() { return rot === "auto" ? innerWidth > innerHeight : rot === "landscape"; }
+  async function applyRotation(announce) {
+    const h = document.documentElement; h.classList.remove("rot-cw", "rot-ccw");
+    let locked = false;
+    try {
+      if (screen.orientation && screen.orientation.lock) {
+        if (rot === "auto") screen.orientation.unlock(); else { await screen.orientation.lock(rot); locked = true; }
+      }
+    } catch (e) { locked = false; }
+    if (rot !== "auto" && !locked) {
+      const wantLand = rot === "landscape", nowLand = physLandscape();
+      if (wantLand !== nowLand) h.classList.add(wantLand ? "rot-cw" : "rot-ccw");
+    }
+    $("rotLabel").textContent = rot[0].toUpperCase() + rot.slice(1);
+    if (announce) toast("Rotation: " + $("rotLabel").textContent);
+    setTimeout(() => { layout && render(); layoutIsland(); }, 120);
+  }
+  $("rotate").onclick = () => { rot = MODES[(MODES.indexOf(rot) + 1) % MODES.length];
+    try { localStorage.setItem("deck.rotate", rot); } catch (e) {} buzz(8); applyRotation(true); };
+  if (screen.orientation) screen.orientation.addEventListener("change", () => applyRotation(false));
+
+  function cols() {
+    const land = isLandscape();
+    const p = Math.max(1, layout.columns || 3);
+    return land ? Math.max(1, layout.columns_landscape || p + 2) : p;
+  }
+
+  // Tiles keep one fixed size. As many rows as fit on this screen (and orientation) are used;
+  // only tiles that don't fit continue on an extra swipeable page ("Apps", "Apps 2", ...).
+  const TILE = 118, GAP = 12, DOTS = 54;                  // px; DOTS = room kept for the page dots
+  let view = [], perPage = 6;
+  function tileH(cw) { return Math.max(80, Math.min(TILE, cw * 1.3)); }
+  function rows(avail, h) {
+    const fixed = isLandscape() ? layout.rows_landscape : layout.rows;
+    if (fixed) return Math.max(1, fixed);
+    return Math.max(1, Math.floor((avail - DOTS + GAP) / (h + GAP)));
+  }
+  function render() {
+    const pages = $("pages"), nav = $("nav");
+    const keep = pages.scrollLeft;
+    pages.innerHTML = ""; nav.innerHTML = "";
+    const c = cols(), cw = (pages.clientWidth - GAP * (c - 1)) / c;
+    // landscape screens are short: size tiles so at least two rows fit
+    const h = isLandscape() ? Math.max(76, Math.min(tileH(cw), (pages.clientHeight - DOTS - GAP) / 2)) : tileH(cw);
+    const r = rows(pages.clientHeight, h), per = c * r;
+    perPage = per;
+    view = [];
+    layout.pages.forEach(pg => {
+      const n = Math.max(1, Math.ceil(pg.buttons.length / per));
+      for (let k = 0; k < n; k++)
+        view.push({ name: k ? `${pg.name} ${k + 1}` : pg.name, buttons: pg.buttons.slice(k * per, (k + 1) * per) });
+    });
+    if (view.length > 1) view.forEach((pg, i) => {          // dots first: they take height from the pages area
+      const t = document.createElement("button"); t.setAttribute("aria-label", pg.name);
+      t.onclick = () => { buzz(6); pages.scrollTo({ left: i * pages.clientWidth, behavior: "smooth" }); };
+      nav.appendChild(t);
+    });
+    view.forEach(pg => {
+      const el = document.createElement("div");
+      el.className = "page"; el.style.gridTemplateColumns = `repeat(${c}, 1fr)`;
+      pg.buttons.forEach(b => {
+        const k = document.createElement("div");
+        k.className = "key"; if (b.color) k.style.setProperty("--c", b.color);
+        if (b.image) {
+          k.innerHTML = `<img class="ico" alt=""><div class="lbl"></div>`;
+          const im = k.querySelector("img"); im.src = b.image;
+          im.onerror = () => { im.replaceWith(Object.assign(document.createElement("div"), { className: "emo", textContent: b.emoji || "" })); };
+        } else {
+          k.innerHTML = `<div class="emo"></div><div class="lbl"></div>`;
+          k.querySelector(".emo").textContent = b.emoji || "";
+        }
+        k.querySelector(".lbl").textContent = b.label || b.id;
+        // Highlight on touch-down (instant); commit on touch-up; a swipe cancels.
+        let t0 = null;
+        const cancel = () => { t0 = null; k.classList.remove("down"); };
+        k.addEventListener("pointerdown", e => {
+          k.classList.remove("ok", "err");
+          t0 = { x: e.clientX, y: e.clientY, sl: pages.scrollLeft }; k.classList.add("down"); });
+        k.addEventListener("pointermove", e => {
+          if (t0 && Math.hypot(e.clientX - t0.x, e.clientY - t0.y) > 10) cancel(); });
+        k.addEventListener("pointercancel", cancel);       // browser took over the touch to scroll
+        k.addEventListener("pointerleave", cancel);
+        k.addEventListener("pointerup", () => {
+          const s = t0; t0 = null; k.classList.remove("down");
+          if (!s || Math.abs(pages.scrollLeft - s.sl) > 3) return;   // page moved: it was a swipe
+          press(b, k);
+        });
+        k.addEventListener("contextmenu", e => e.preventDefault());
+        el.appendChild(k);
+      });
+      pages.appendChild(el);
+    });
+    // one fixed tile size everywhere (shrinks only if fixed rows were forced and don't fit)
+    const fit = Math.min(h, (pages.clientHeight - GAP * (r - 1) - 4) / r);
+    pages.querySelectorAll(".key").forEach(k => k.style.height = Math.max(64, fit) + "px");
+    pages.scrollLeft = keep; markTab();
+  }
+
+  let lastPage = -1;
+  function markTab() {
+    const pages = $("pages"); const i = Math.round(pages.scrollLeft / Math.max(1, pages.clientWidth));
+    [...$("nav").children].forEach((b, j) => b.classList.toggle("sel", i === j));
+    const pg = view[i];
+    $("title").textContent = pg ? (view.length > 1 ? pg.name : (layout.title || pg.name)) : "USB Deck";
+    if (i !== lastPage && lastPage !== -1) buzz(4);          // light tick when a page snaps in
+    lastPage = i;
+  }
+  let scrollTimer;
+  $("pages").addEventListener("scroll", () => { clearTimeout(scrollTimer); scrollTimer = setTimeout(markTab, 60); }, { passive: true });
+
+  // "already open" chooser
+  let pending = null;
+  const closeChoose = () => { $("choose").classList.remove("show"); pending = null; };
+  $("choose").onclick = e => { if (e.target === $("choose")) closeChoose(); };
+  $("chooseCancel").onclick = closeChoose;
+  $("chooseSwitch").onclick = () => { const p = pending; closeChoose(); if (p) press(p.b, p.k, "switch"); };
+  $("chooseNew").onclick = () => { const p = pending; closeChoose(); if (p) press(p.b, p.k, "new"); };
+
+  async function press(b, k, choice) {
+    buzz(10);                                                 // haptic on the same frame as the commit
+    try {
+      const r = await api("/api/press", { method: "POST", timeout: 8000,
+        headers: { "Content-Type": "application/json", "X-Deck": "1" }, body: JSON.stringify({ id: b.id, choice }) });
+      if (r.ask) {
+        pending = { b, k };
+        $("chooseTitle").textContent = r.ask + " is already open";
+        $("chooseSwitch").textContent = "Switch to " + r.ask;
+        $("choose").classList.add("show"); buzz(6);
+        return;
+      }
+      flash(k, r.ok);
+      if (!r.ok) { toast(r.message || "That didn't work"); buzz([30, 50, 30]); }
+    } catch (e) { flash(k, false); toast("Laptop not reachable"); buzz([30, 50, 30]); }
+  }
+  function flash(k, ok) { k.classList.remove("ok", "err"); void k.offsetWidth; k.classList.add(ok ? "ok" : "err");
+    setTimeout(() => k.classList.remove("ok", "err"), 650); }
+
+
+  // ------------------------------------------------------------ now-playing island
+  // Size/position are driven by a damped spring (Apple's response + damping model) so the
+  // island can be re-targeted mid-animation without jumps: it always moves from where it is.
+  const isl = $("island"), RM = matchMedia("(prefers-reduced-motion: reduce)");
+  const sp = { w: { x: 60, v: 0, t: 60 }, h: { x: 30, v: 0, t: 30 }, r: { x: 15, v: 0, t: 15 }, l: { x: 180, v: 0, t: 180 } };
+  let spCfg = { response: .4, damping: 1 }, spRaf = 0, spLast = 0;
+  function springTo(t, cfg) {
+    for (const k in t) sp[k].t = t[k];
+    spCfg = cfg;
+    if (RM.matches) { for (const k in sp) { sp[k].x = sp[k].t; sp[k].v = 0; } applySp(); return; }
+    if (!spRaf) { spLast = performance.now(); spRaf = requestAnimationFrame(stepSp); }
+  }
+  function stepSp(now) {
+    const dt = Math.min(1 / 30, (now - spLast) / 1000); spLast = now;
+    const w = 2 * Math.PI / spCfg.response, k = w * w, c = 2 * spCfg.damping * w, n = 4, h = dt / n;
+    let moving = false;
+    for (const key in sp) {
+      const s = sp[key];
+      for (let i = 0; i < n; i++) { const a = -k * (s.x - s.t) - c * s.v; s.v += a * h; s.x += s.v * h; }
+      if (Math.abs(s.v) > .4 || Math.abs(s.x - s.t) > .25) moving = true; else { s.x = s.t; s.v = 0; }
+    }
+    applySp();
+    spRaf = moving ? requestAnimationFrame(stepSp) : 0;
+  }
+  function applySp() {
+    isl.style.width = sp.w.x + "px"; isl.style.height = sp.h.x + "px";
+    isl.style.borderRadius = sp.r.x + "px"; isl.style.left = sp.l.x + "px";
+  }
+
+  let M = null, mRecv = 0, pausedAt = 0, expanded = false, dragging = false, dragPos = 0, artUrl = "", hold = null;
+  const fmt = t => { t = Math.max(0, Math.round(t || 0)); return Math.floor(t / 60) + ":" + String(t % 60).padStart(2, "0"); };
+  const curPos = () => !M ? 0 : Math.min(M.duration || 0, (M.position || 0) + (M.status === "playing" ? (performance.now() - mRecv) / 1000 : 0));
+
+  function geom() {
+    const pill = document.querySelector("header .pill"), rb = $("rotate");
+    const pr = pill.offsetLeft + pill.offsetWidth, gap = rb.offsetLeft - pr;
+    const cw = Math.max(96, Math.min(240, gap - 14)), BW = document.body.clientWidth, bw = Math.min(BW - 20, 440);
+    $("islFull").style.setProperty("--fw", bw + "px");
+    return { cw, cx: pr + gap / 2, bw, bh: $("islFull").offsetHeight || 250, bx: BW / 2 };
+  }
+  function shouldShow() {
+    if (!M || !M.active || !online) return false;
+    if (expanded || M.status === "playing" || M.status === "changing") return true;
+    return M.status === "paused" && Date.now() - pausedAt < 90000;     // linger a bit after pausing
+  }
+  function layoutIsland() {
+    const show = shouldShow();
+    $("title").classList.toggle("hide", show && !expanded);
+    if (!show) {
+      expanded = false; $("islScrim").classList.remove("show");
+      if (isl.classList.contains("on")) {
+        isl.classList.remove("vis", "big");
+        springTo({ w: 60, h: 30, r: 15 }, { response: .35, damping: 1 });
+        setTimeout(() => { if (!shouldShow()) isl.classList.remove("on"); }, 320);
+      }
+      return;
+    }
+    if (!isl.classList.contains("on")) {               // appear: grow out of a small pill
+      isl.classList.add("on");
+      const g0 = geom(); sp.l.x = sp.l.t = g0.cx; sp.w.x = 60; sp.h.x = 30; sp.r.x = 15; applySp();
+      requestAnimationFrame(() => isl.classList.add("vis"));
+    }
+    const g = geom();
+    isl.classList.toggle("titled", g.cw >= 160);
+    $("cTitle").style.display = g.cw >= 160 ? "" : "none";
+    if (expanded) {
+      isl.classList.add("big"); $("islScrim").classList.add("show");
+      springTo({ w: g.bw, h: g.bh, r: 38, l: g.bx }, { response: .46, damping: .78 });   // a little bounce on expand
+    } else {
+      isl.classList.remove("big"); $("islScrim").classList.remove("show");
+      springTo({ w: g.cw, h: 36, r: 18, l: g.cx }, { response: .42, damping: .9 });
+    }
+  }
+
+  function updateMedia(m) {
+    const prev = M && M.status;
+    if (m && hold && performance.now() < hold.until && m.status !== hold.status) m = { ...m, status: hold.status };
+    M = m && m.active ? m : null; mRecv = performance.now();
+    if (M && M.status === "paused" && prev !== "paused") pausedAt = Date.now();
+    renderMedia(); layoutIsland();
+  }
+  function renderMedia() {
+    if (!M) return;
+    isl.classList.toggle("playing", M.status === "playing");
+    $("cTitle").textContent = M.title; $("fTitle").textContent = M.title;
+    $("fArtist").textContent = [M.artist, M.album && M.album !== M.title ? M.album : ""].filter(Boolean).join(" — ");
+    if (M.art !== artUrl) {
+      artUrl = M.art || "";
+      for (const id of ["cArt", "fArt"]) $(id).src = artUrl || "/icon-192.png";
+      $("fArt").onload = () => tintFrom($("fArt"));
+    }
+    const ai = $("fApp"); if (M.app_icon && ai.getAttribute("src") !== M.app_icon) { ai.onerror = () => ai.setAttribute("src", ""); ai.src = M.app_icon; }
+    const playing = M.status === "playing";
+    $("icPause").classList.toggle("out", !playing); $("icPlay").classList.toggle("out", playing);
+    const can = M.can || {};
+    $("mPrev").hidden = !can.prev; $("mNext").hidden = !can.next;
+    $("mShuffle").hidden = !can.shuffle; $("mRepeat").hidden = !can.repeat;
+    $("mShuffle").classList.toggle("lit", M.shuffle === true);
+    $("mRepeat").classList.toggle("lit", !!M.repeat && M.repeat !== "none");
+    $("scrub").classList.toggle("off", !can.seek);
+    if (!dragging) drawPos(curPos());
+  }
+  function drawPos(p) {
+    const d = (M && M.duration) || 0;
+    $("fill").style.width = d ? (100 * p / d) + "%" : "0%";
+    $("tCur").textContent = fmt(p); $("tRem").textContent = d ? "-" + fmt(d - p) : "--:--";
+  }
+  function tintFrom(img) {
+    try {
+      const c = document.createElement("canvas"); c.width = c.height = 16;
+      const x = c.getContext("2d"); x.drawImage(img, 0, 0, 16, 16);
+      const d = x.getImageData(0, 0, 16, 16).data; let r = 0, g = 0, b = 0, n = 0;
+      for (let i = 0; i < d.length; i += 4) {             // weight colourful pixels more
+        const w = 1 + (Math.max(d[i], d[i + 1], d[i + 2]) - Math.min(d[i], d[i + 1], d[i + 2])) / 12;
+        r += d[i] * w; g += d[i + 1] * w; b += d[i + 2] * w; n += w;
+      }
+      r /= n; g /= n; b /= n; const k = 235 / Math.max(r, g, b, 1); r *= k; g *= k; b *= k;
+      const rgb = `${r | 0},${g | 0},${b | 0}`;
+      isl.style.setProperty("--tint", `rgb(${rgb})`);
+      isl.style.setProperty("--tint-soft", `rgba(${rgb},.32)`);
+      isl.style.setProperty("--tint-glow", `rgba(${rgb},.45)`);
+    } catch (e) {}
+  }
+
+  let ticking = false;
+  function tick() { if (!expanded) { ticking = false; return; } if (M && !dragging) drawPos(curPos()); requestAnimationFrame(tick); }
+  let mpTimer;
+  async function pollMediaFast() {
+    clearTimeout(mpTimer); if (!expanded) return;
+    try { updateMedia(await api("/api/media", { timeout: 2000 })); } catch (e) {}
+    mpTimer = setTimeout(pollMediaFast, 700);
+  }
+  function expand() {
+    if (expanded) return; expanded = true; buzz(8); layoutIsland(); pollMediaFast();
+    if (!ticking) { ticking = true; requestAnimationFrame(tick); }
+  }
+  function collapse() { if (!expanded) return; expanded = false; buzz(5); layoutIsland(); }
+  isl.addEventListener("click", () => { if (!expanded) expand(); });
+  $("islScrim").addEventListener("click", collapse);
+  let swipeY = null;                                       // swipe up on the open island to close it
+  isl.addEventListener("pointerdown", e => { if (expanded && !e.target.closest(".scrub, .cb")) swipeY = e.clientY; });
+  isl.addEventListener("pointerup", e => { if (swipeY !== null && e.clientY - swipeY < -30) collapse(); swipeY = null; });
+
+  async function mediaCmd(action, value) {
+    buzz(8);
+    try {
+      const r = await api("/api/media", { method: "POST", timeout: 6000,
+        headers: { "Content-Type": "application/json", "X-Deck": "1" }, body: JSON.stringify({ action, value }) });
+      if (!r.ok) { toast(r.message || "That didn't work"); buzz([30, 50, 30]); }
+      else if (r.media) updateMedia(r.media);
+    } catch (e) { toast("Laptop not reachable"); }
+  }
+  $("mPlay").onclick = () => {
+    if (M) {                                               // flip instantly; the player catches up
+      M.position = curPos(); mRecv = performance.now();
+      M.status = M.status === "playing" ? "paused" : "playing";
+      hold = { status: M.status, until: performance.now() + 1500 };
+      if (M.status === "paused") pausedAt = Date.now();
+      renderMedia();
+    }
+    mediaCmd("toggle");
+  };
+  $("mNext").onclick = () => mediaCmd("next");
+  $("mPrev").onclick = () => mediaCmd("prev");
+  const blink = el => { el.classList.add("lit"); setTimeout(() => renderMedia(), 700); };
+  $("mShuffle").onclick = () => { if (M && M.shuffle_via_keys) { blink($("mShuffle")); toast("Shuffle toggled"); } mediaCmd("shuffle"); };
+  $("mRepeat").onclick = () => { if (M && M.shuffle_via_keys) { blink($("mRepeat")); toast("Repeat mode changed"); } mediaCmd("repeat"); };
+
+  // scrubber: grows on touch, follows the finger 1:1, seeks on release
+  const sc = $("scrub"), bar = $("bar");
+  function frac(e) {
+    const r = bar.getBoundingClientRect(), h = document.documentElement;
+    let f = h.classList.contains("rot-cw") ? (e.clientY - r.top) / r.height
+          : h.classList.contains("rot-ccw") ? (r.bottom - e.clientY) / r.height
+          : (e.clientX - r.left) / r.width;
+    return Math.max(0, Math.min(1, f));
+  }
+  function scrubMove(e) { dragPos = frac(e) * ((M && M.duration) || 0); drawPos(dragPos); }
+  sc.addEventListener("pointerdown", e => {
+    if (!M || !(M.can || {}).seek) return;
+    dragging = true; sc.setPointerCapture(e.pointerId); sc.classList.add("active"); buzz(4); scrubMove(e);
+  });
+  sc.addEventListener("pointermove", e => { if (dragging) scrubMove(e); });
+  sc.addEventListener("pointerup", () => {
+    if (!dragging) return; dragging = false; sc.classList.remove("active");
+    M.position = dragPos; mRecv = performance.now(); mediaCmd("seek", Math.round(dragPos * 10) / 10);
+  });
+  sc.addEventListener("pointercancel", () => { dragging = false; sc.classList.remove("active"); });
+  addEventListener("resize", () => setTimeout(layoutIsland, 150));
+
+  async function loadLayout() {
+    layout = await api("/api/config"); version = layout.version;
+    try { localStorage.setItem("deck.layout", JSON.stringify(layout)); } catch (e) {}
+    render();
+  }
+
+  let hbTimer = null;
+  async function heartbeat() {
+    clearTimeout(hbTimer);
+    try {
+      const r = await api("/api/ping?vp=" + (isLandscape() ? "landscape" : "portrait") + ":" + perPage, { timeout: 2500 });
+      failCount = 0; setOnline(true); setPaused(r.paused, r.paused_by);
+      if (!expanded) updateMedia(r.media);
+      if (!layout || r.version !== version) await loadLayout();
+    } catch (e) { if (++failCount >= 2) { setOnline(false); layoutIsland(); } }
+    hbTimer = setTimeout(heartbeat, online ? 1500 : 2000);
+  }
+
+  // keep the screen awake while the deck is open
+  async function wake() { try { if ("wakeLock" in navigator && document.visibilityState === "visible")
+      await navigator.wakeLock.request("screen"); } catch (e) {} }
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") { wake(); heartbeat(); } });
+  addEventListener("resize", () => layout && render());
+
+  try { const c = localStorage.getItem("deck.layout"); if (c) { layout = JSON.parse(c); version = layout.version; render(); } } catch (e) {}
+  if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
+  applyRotation(false); wake(); heartbeat();
+})();
+</script>
+</body>
+</html>

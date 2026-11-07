@@ -1,0 +1,573 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="/icon-192.png">
+<title>USB Deck</title>
+<style>
+  :root {
+    --bg: #111214; --panel: #1a1b1e; --panel2: #232428; --line: #2e3035; --text: #ececf1;
+    --dim: #9a9ca5; --accent: #4f8cff; --ok: #2ecc71; --warn: #f0b429; --bad: #e5484d;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font: 14px/1.4 "Segoe UI", system-ui, sans-serif; }
+  button, input, select, textarea { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  .app { display: grid; grid-template-rows: auto 1fr auto; height: 100%; }
+
+  /* top bar */
+  .top { display: flex; align-items: center; gap: 10px; padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+  .top h1 { font-size: 16px; margin: 0 8px 0 0; }
+  .chip { display: inline-flex; align-items: center; gap: 7px; padding: 5px 11px; border-radius: 999px; background: var(--panel2); color: var(--dim); font-size: 13px; }
+  .chip .d { width: 9px; height: 9px; border-radius: 50%; background: var(--bad); }
+  .chip.on .d { background: var(--ok); } .chip.pause .d { background: var(--warn); }
+  .spacer { flex: 1; }
+  .btn { border: 1px solid var(--line); background: var(--panel2); border-radius: 9px; padding: 6px 12px; }
+  .btn:hover { border-color: #444851; }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.danger { color: #ff8a8d; }
+  .btn.go { background: #1f7a45; border-color: #1f7a45; color: #fff; }
+  .btn:disabled { opacity: .45; cursor: default; }
+  .save { font-size: 12px; color: var(--dim); min-width: 150px; text-align: right; }
+
+  /* main */
+  .main { display: grid; grid-template-columns: 1fr 340px; min-height: 0; }
+  .stage { overflow: auto; padding: 18px 22px; }
+  .tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; align-items: center; }
+  .tab { padding: 7px 14px; border-radius: 10px; background: var(--panel2); border: 1px solid transparent; color: var(--dim); font-weight: 600; user-select: none; }
+  .tab.sel { color: #fff; border-color: #3d4048; background: #2c2e33; }
+  .tab.drop { border-color: var(--accent); }
+  .row { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; color: var(--dim); font-size: 13px; }
+  .phone { background: #000; border-radius: 26px; padding: 14px; border: 1px solid var(--line); display: inline-block; }
+  .grid { display: grid; gap: 10px; }
+  .tile { position: relative; border-radius: 16px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 5px; padding: 6px; color: #fff; user-select: none; cursor: grab; border: 2px solid transparent; transition: transform .08s; }
+  .tile:hover { filter: brightness(1.08); }
+  .tile.sel { border-color: #fff; box-shadow: 0 0 0 3px rgba(79,140,255,.6); }
+  .tile.dragging { opacity: .35; }
+  .tile.before::before, .tile.after::after { content: ""; position: absolute; top: 6px; bottom: 6px; width: 4px; border-radius: 2px; background: var(--accent); }
+  .tile.before::before { left: -9px; } .tile.after::after { right: -9px; }
+  .tile img.i { width: 52%; aspect-ratio: 1; object-fit: contain; pointer-events: none; filter: drop-shadow(0 2px 3px #0005); }
+  .seg { display: flex; background: var(--panel2); border: 1px solid var(--line); border-radius: 9px; padding: 3px; gap: 3px; }
+  .seg button { flex: 1; border: 0; background: transparent; border-radius: 7px; padding: 6px 4px; color: var(--dim); font-size: 13px; }
+  .seg button.on { background: #3a3d45; color: #fff; }
+  .pic { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
+  .pic .prev { width: 64px; height: 64px; border-radius: 14px; display: flex; align-items: center; justify-content: center; font-size: 30px; flex: none; }
+  .pic .prev img { width: 70%; height: 70%; object-fit: contain; }
+  .tile .e { font-size: 28px; line-height: 1; } .tile .l { font-size: 12.5px; font-weight: 600; text-align: center; line-height: 1.15; }
+  .tile.add { background: transparent; border: 2px dashed #3a3d44; color: var(--dim); cursor: pointer; }
+  .brk { grid-column: 1 / -1; display: flex; align-items: center; gap: 10px; color: #8fb4ff; font-size: 12px; font-weight: 600; margin: 2px 0; }
+  .brk::before, .brk::after { content: ""; flex: 1; height: 1px; background: repeating-linear-gradient(90deg, #4f8cff 0 6px, transparent 6px 11px); }
+  .hint { color: var(--dim); font-size: 12.5px; margin-top: 10px; }
+
+  /* side panel */
+  .side { background: var(--panel); border-left: 1px solid var(--line); overflow: auto; padding: 16px; }
+  .side h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--dim); margin: 4px 0 12px; }
+  .f { margin-bottom: 12px; } .f label { display: block; font-size: 12.5px; color: var(--dim); margin-bottom: 5px; }
+  .f input[type=text], .f select, .f textarea, .f input[type=number] { width: 100%; background: var(--panel2); border: 1px solid var(--line); border-radius: 8px; padding: 7px 9px; outline: none; }
+  .f input:focus, .f select:focus, .f textarea:focus { border-color: var(--accent); }
+  .f textarea { min-height: 120px; font-family: Consolas, monospace; font-size: 12.5px; }
+  .inline { display: flex; gap: 6px; } .inline > * { flex: 1; } .inline .btn { flex: none; }
+  .sw { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  .sw span { width: 22px; height: 22px; border-radius: 6px; cursor: pointer; border: 1px solid #0006; }
+  .em { display: flex; flex-wrap: wrap; gap: 2px; margin-top: 6px; }
+  .em span { font-size: 19px; cursor: pointer; padding: 2px 3px; border-radius: 6px; } .em span:hover { background: var(--panel2); }
+  .check { display: flex; align-items: center; gap: 8px; color: var(--text); font-size: 13px; }
+  .sep { height: 1px; background: var(--line); margin: 16px 0; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .note { font-size: 12px; color: var(--dim); margin-top: 6px; }
+  .res { font-size: 12.5px; margin-top: 8px; min-height: 18px; }
+
+  /* log */
+  .log { background: #0c0d0f; border-top: 1px solid var(--line); height: 120px; overflow: auto; padding: 8px 16px; font: 12px/1.5 Consolas, monospace; color: #a9adb6; white-space: pre-wrap; }
+  .log .err { color: #ff8a8d; }
+  .toast { position: fixed; bottom: 140px; left: 50%; transform: translateX(-50%); background: #2b2d33; padding: 9px 16px; border-radius: 10px; opacity: 0; transition: opacity .2s; pointer-events: none; }
+  .toast.show { opacity: 1; }
+  .blocked { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; background: #000c; text-align: center; padding: 30px; z-index: 9; }
+  .blocked.show { display: flex; }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="top">
+    <h1>🎛️ USB Deck</h1>
+    <span class="chip" id="chip"><span class="d"></span><span id="chipText">Connecting…</span></span>
+    <span class="chip" id="link" title="Phone link"></span>
+    <span id="addrBox" style="display:none; gap:6px; align-items:center">
+      <input id="addr" placeholder="Phone IP:port (Wireless debugging)" style="width:220px; background:var(--panel2); border:1px solid var(--line); border-radius:8px; padding:6px 9px">
+      <button class="btn" id="addrBtn">Connect</button></span>
+    <span class="spacer"></span>
+    <button class="btn" id="pauseBtn">⏸ Pause deck</button>
+    <button class="btn danger" id="discBtn">⏏ Disconnect phone</button>
+    <button class="btn" id="undoBtn" title="Ctrl+Z" disabled>↶ Undo</button>
+    <span class="save" id="saveState">All changes saved</span>
+  </div>
+
+  <div class="main">
+    <div class="stage">
+      <div class="tabs" id="tabs"></div>
+      <div class="row">
+        <span>Preview:</span>
+        <button class="btn" id="orient">📱 Portrait</button>
+        <span id="pageInfo"></span>
+      </div>
+      <div class="phone"><div class="grid" id="grid"></div></div>
+      <div class="hint">Drag tiles to reorder · drop a tile on a page tab to move it there · click a tile to edit · changes save automatically and appear on the phone within ~2 seconds.</div>
+    </div>
+    <div class="side" id="side"></div>
+  </div>
+
+  <div class="log" id="log"></div>
+</div>
+<div class="toast" id="toast"></div>
+<div class="blocked" id="blocked"><div><h2>Editor link expired</h2><p>Open the editor again from the <b>USB Deck</b> shortcut on your desktop.</p></div></div>
+
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const qs = new URLSearchParams(location.search);
+  let token = qs.get("t") || sessionStorage.getItem("deck.t") || "";
+  if (qs.get("t")) { sessionStorage.setItem("deck.t", token); history.replaceState(null, "", "/editor"); }
+
+  let cfg = null, layout = null, profiles = ["teams"], page = 0, sel = null, landscape = false;
+  let undo = [], saveTimer = null, saving = false, pending = false, status = null, base = null;
+
+  const COLORS = ["#C0392B","#922B21","#8E44AD","#6C3483","#2471A3","#1F618D","#0F6CBD","#4B53BC",
+                  "#117A65","#1E8449","#107C41","#148F77","#B9770E","#7D6608","#D35400","#34495E","#566573","#212F3D"];
+  const EMOJI = "🎙️ 🔇 📹 🖥️ ✋ 💬 📞 📁 📂 🗂️ 🗄️ ⬇️ ✉️ 📊 📝 🧮 🌐 📈 🔉 🔊 ⏯️ ⏭️ ⏮️ 🔒 ✂️ 📷 ⌨️ ⚙️ 📅 ⭐ 🚀 🧪 🛠️ 💾 🗃️ 🔁 🧹 🖨️ 🎧 💡 ☕ 🏠 🔍 ✅ ❌".split(" ");
+  const QUICK = [
+    ["", "Quick pick…"], ["ctrl+shift+m", "Teams: mute / unmute"], ["ctrl+shift+o", "Teams: camera on/off"],
+    ["ctrl+shift+e", "Teams: share screen"], ["ctrl+shift+k", "Teams: raise hand"], ["ctrl+shift+h", "Teams: leave call"],
+    ["win+alt+k", "Win 11: mute mic in call (global)"], ["volume_mute", "Speaker mute"], ["volume_up", "Volume up"],
+    ["volume_down", "Volume down"], ["media_play_pause", "Play / pause"], ["media_prev", "Previous track"], ["media_next", "Next track"], ["media_stop", "Stop"],
+    ["win+shift+s", "Screenshot (Snipping)"], ["win+d", "Show desktop"], ["win+l", "Lock PC"], ["ctrl+c", "Copy"], ["ctrl+v", "Paste"]];
+
+  // ------------------------------------------------------------------ api
+  async function api(path, body) {
+    const r = await fetch(path, { method: body ? "POST" : "GET", cache: "no-store",
+      headers: { "Content-Type": "application/json", "X-Editor-Token": token }, body: body ? JSON.stringify(body) : undefined });
+    if (r.status === 403) { $("blocked").classList.add("show"); throw new Error("token"); }
+    if (r.status === 409) return r.json();
+    return r.json();
+  }
+  function toast(t) { const el = $("toast"); el.textContent = t; el.classList.add("show"); clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove("show"), 2200); }
+  const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const pages = () => cfg.pages;
+  const cur = () => cfg.pages[page];
+  function layoutTile(b) {
+    for (const p of (layout?.pages || [])) for (const x of p.buttons) if (x.id === b.id) return x;
+    return null;
+  }
+  function imageUrl(b) {
+    if (!b.image || b.image === "emoji") return null;
+    if (b.image.startsWith("file:")) return "/icons/" + b.image.slice(5);
+    return layoutTile(b)?.image || null;
+  }
+  async function refreshLayout() {
+    try { layout = await api("/api/editor/layout", {}); renderGrid(); if (sel) refreshPicPreview(); } catch (e) {}
+  }
+  function fallbackEmoji(b) {
+    for (const p of (layout?.pages || [])) for (const x of p.buttons) if (x.id === b.id) return x.emoji;
+    return "🔘";
+  }
+
+  // ------------------------------------------------------------------ save
+  function change(fn) {
+    undo.push(JSON.stringify(cfg)); if (undo.length > 60) undo.shift();
+    fn(); $("undoBtn").disabled = false; render(); queueSave();
+  }
+  function queueSave() {
+    $("saveState").textContent = "Saving…"; clearTimeout(saveTimer); saveTimer = setTimeout(save, 600);
+  }
+  async function save() {
+    if (saving) { pending = true; return; }
+    saving = true;
+    try {
+      const r = await api("/api/editor/save", { config: cfg, base });
+      if (r.config && !r.ok) {          // changed elsewhere: take the newer layout instead of overwriting it
+        cfg = r.config; base = r.mtime; undo = []; $("undoBtn").disabled = true;
+        if (page >= cfg.pages.length) page = 0; sel = null; render(); refreshLayout();
+        $("saveState").textContent = "↻ Reloaded newer layout"; toast("The layout was changed elsewhere, so it was reloaded. Please redo your last edit.");
+        saving = false; pending = false; return;
+      }
+      if (r.ok) { base = r.version; setTimeout(refreshLayout, 300); setTimeout(refreshLayout, 2500); $("saveState").textContent = "✓ Saved · phone updating"; setTimeout(() => $("saveState").textContent = "All changes saved", 2500); }
+      else { $("saveState").textContent = "⚠ Not saved"; toast(r.error || "Save failed"); }
+    } catch (e) { $("saveState").textContent = "⚠ Agent not reachable"; }
+    saving = false; if (pending) { pending = false; save(); }
+  }
+  $("undoBtn").onclick = doUndo;
+  function doUndo() { if (!undo.length) return; cfg = JSON.parse(undo.pop()); $("undoBtn").disabled = !undo.length;
+    if (page >= cfg.pages.length) page = 0; sel = null; render(); queueSave(); }
+  addEventListener("keydown", e => { if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z" && !/INPUT|TEXTAREA/.test(document.activeElement.tagName)) { e.preventDefault(); doUndo(); } });
+
+  // ------------------------------------------------------------------ render
+  function render() { renderTabs(); renderGrid(); renderSide(); }
+
+  function renderTabs() {
+    const t = $("tabs"); t.innerHTML = "";
+    pages().forEach((p, i) => {
+      const el = document.createElement("div"); el.className = "tab" + (i === page ? " sel" : ""); el.textContent = p.name;
+      el.onclick = () => { page = i; sel = null; render(); };
+      el.ondragover = e => { if (drag) { e.preventDefault(); el.classList.add("drop"); } };
+      el.ondragleave = () => el.classList.remove("drop");
+      el.ondrop = e => { e.preventDefault(); el.classList.remove("drop"); if (!drag || i === drag.page) return;
+        change(() => { const [b] = pages()[drag.page].buttons.splice(drag.idx, 1); pages()[i].buttons.push(b); page = i; sel = b.id; }); drag = null; };
+      t.appendChild(el);
+    });
+    const add = document.createElement("button"); add.className = "btn"; add.textContent = "+ Page";
+    add.onclick = () => change(() => { pages().push({ name: "Page " + (pages().length + 1), buttons: [] }); page = pages().length - 1; sel = null; });
+    t.appendChild(add);
+  }
+
+  let drag = null;
+  function renderGrid() {
+    const g = $("grid"), p = cur(); g.innerHTML = "";
+    const cols = landscape ? (cfg.columns_landscape || (cfg.columns || 3) + 2) : (cfg.columns || 3);
+    const size = landscape ? 104 : 112;
+    g.style.gridTemplateColumns = `repeat(${cols}, ${size}px)`;
+    // tiles per phone page: forced rows if set, otherwise what the phone reported it fits
+    const forced = landscape ? cfg.rows_landscape : cfg.rows;
+    const seen = (status && status.phone_view || {})[landscape ? "landscape" : "portrait"];
+    const per = forced ? cols * forced : (seen || cols * (landscape ? 2 : 4));
+    const phonePages = Math.max(1, Math.ceil(p.buttons.length / per));
+    $("pageInfo").textContent = `${p.buttons.length} tiles · ${per} fit on one phone page` +
+      (forced ? "" : seen ? " (measured on your phone)" : " (estimate until the phone connects)") +
+      (phonePages > 1 ? ` · shows as ${phonePages} pages on the phone` : "");
+    p.buttons.forEach((b, idx) => {
+      if (idx && idx % per === 0) {
+        const d = document.createElement("div"); d.className = "brk";
+        d.textContent = `phone page ${idx / per + 1} — "${p.name} ${idx / per + 1}"`; g.appendChild(d);
+      }
+      const el = document.createElement("div");
+      el.className = "tile" + (sel === b.id ? " sel" : ""); el.style.background = b.color || "#38383a"; el.style.height = size + "px";
+      const img = imageUrl(b);
+      el.innerHTML = (img ? `<img class="i" src="${esc(img)}" alt="">` : `<div class="e">${esc(b.emoji || fallbackEmoji(b))}</div>`) +
+                     `<div class="l">${esc(b.label || b.id)}</div>`;
+      el.draggable = true;
+      el.onclick = () => { sel = b.id; render(); };
+      el.ondragstart = e => { drag = { page, idx }; el.classList.add("dragging"); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", b.id); };
+      el.ondragend = () => { drag = null; document.querySelectorAll(".tile").forEach(t => t.classList.remove("dragging", "before", "after")); };
+      el.ondragover = e => { if (!drag) return; e.preventDefault(); const r = el.getBoundingClientRect(); const after = e.clientX > r.left + r.width / 2;
+        el.classList.toggle("after", after); el.classList.toggle("before", !after); };
+      el.ondragleave = () => el.classList.remove("before", "after");
+      el.ondrop = e => { e.preventDefault(); if (!drag) return; const r = el.getBoundingClientRect(); const after = e.clientX > r.left + r.width / 2;
+        const from = drag; drag = null;
+        change(() => { const src = pages()[from.page].buttons; const [m] = src.splice(from.idx, 1);
+          let to = idx + (after ? 1 : 0); if (from.page === page && from.idx < to) to--; cur().buttons.splice(to, 0, m); sel = m.id; }); };
+      g.appendChild(el);
+    });
+    const add = document.createElement("div"); add.className = "tile add"; add.style.height = size + "px";
+    add.innerHTML = `<div class="e">＋</div><div class="l">Add tile</div>`;
+    add.onclick = () => change(() => { const id = "btn_" + Math.random().toString(36).slice(2, 8);
+      cur().buttons.push({ id, label: "New tile", emoji: "⭐", color: "#34495E", action: { type: "open", target: "" } }); sel = id; });
+    add.ondragover = e => { if (drag) e.preventDefault(); };
+    add.ondrop = e => { e.preventDefault(); if (!drag) return; const from = drag; drag = null;
+      change(() => { const [m] = pages()[from.page].buttons.splice(from.idx, 1); cur().buttons.push(m); sel = m.id; }); };
+    g.appendChild(add);
+  }
+  $("orient").onclick = () => { landscape = !landscape; $("orient").textContent = landscape ? "📱 Landscape" : "📱 Portrait"; renderGrid(); };
+
+  // ------------------------------------------------------------------ side panel
+  function field(label, html, note) { return `<div class="f"><label>${label}</label>${html}${note ? `<div class="note">${note}</div>` : ""}</div>`; }
+
+  function renderSide() {
+    const s = $("side");
+    const b = sel && cur().buttons.find(x => x.id === sel);
+    if (!b) { renderSettings(s); return; }
+    const a = b.action || {}; const t = ["open", "hotkey", "run", "media"].includes(a.type) ? a.type : "advanced";
+    s.innerHTML = `
+      <h2>Tile</h2>
+      ${field("Label", `<input type="text" id="fLabel" value="${esc(b.label)}">`)}
+      ${field("Picture", `<div class="seg" id="picSeg">
+            <button data-m="emoji">😀 Emoji</button><button data-m="app">🖼 App icon</button><button data-m="file">⬆ My image</button></div>
+          <div class="pic"><div class="prev" id="picPrev"></div><div class="note" id="picNote"></div></div>
+          <div id="picEmoji"><input type="text" id="fEmoji" value="${esc(b.emoji || "")}" placeholder="${esc(fallbackEmoji(b))}" style="margin-top:10px">
+            <div class="em">${EMOJI.map(e => `<span>${e}</span>`).join("")}</div></div>
+          <div id="picFile" style="margin-top:10px"><input type="file" id="fUpload" accept="image/*" style="display:none">
+            <button class="btn" id="bUpload">Choose image…</button></div>`)}
+      ${field("Colour", `<div class="inline"><input type="color" id="fColor" value="${esc(b.color || "#34495e")}" style="height:34px;padding:2px"></div>
+          <div class="sw">${COLORS.map(c => `<span style="background:${c}" data-c="${c}"></span>`).join("")}</div>`)}
+      <div class="sep"></div>
+      <h2>Action</h2>
+      ${field("Type", `<select id="fType">
+          <option value="open">Open folder / file / app / URL</option><option value="hotkey">Keyboard shortcut</option>
+          <option value="media">Music / media control</option>
+          <option value="run">Run command</option><option value="advanced">Advanced (JSON)</option></select>`)}
+      <div id="actionFields"></div>
+      <div class="actions"><button class="btn go" id="testBtn">▶ Test on this PC</button></div>
+      <div class="res" id="testRes"></div>
+      <div class="sep"></div>
+      ${field("Move to page", `<select id="fPage">${pages().map((p, i) => `<option value="${i}" ${i === page ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select>`)}
+      <div class="actions"><button class="btn" id="dupBtn">Duplicate</button><button class="btn danger" id="delBtn">Delete tile</button><button class="btn" id="doneBtn">Done</button></div>
+      ${field("iPhone icon (SF Symbol name, optional)", `<input type="text" id="fIcon" value="${esc(b.icon || "")}">`)}`;
+    $("fType").value = t;
+    const edit = fn => change(fn);
+    const live = (id, fn) => { $(id).oninput = e => { undo.push(JSON.stringify(cfg)); $("undoBtn").disabled = false; fn(e.target.value); renderGrid(); renderTabs(); queueSave(); }; };
+    live("fLabel", v => b.label = v);
+    live("fEmoji", v => b.emoji = v.trim());
+    live("fColor", v => b.color = v.toUpperCase());
+    live("fIcon", v => b.icon = v.trim() || undefined);
+    const mode = () => !b.image || b.image === "emoji" ? "emoji" : b.image === "app" ? "app" : "file";
+    s.querySelectorAll("#picSeg button").forEach(x => x.onclick = () => {
+      const m = x.dataset.m;
+      if (m === "file") { $("fUpload").click(); return; }
+      edit(() => { if (m === "emoji") delete b.image; else b.image = "app"; });
+    });
+    $("bUpload").onclick = () => $("fUpload").click();
+    $("fUpload").onchange = async e => {
+      const f = e.target.files[0]; if (!f) return;
+      try {
+        const png = await toPng(f);
+        const r = await api("/api/editor/upload", { id: b.id, png });
+        if (!r.ok) throw new Error(r.error);
+        edit(() => b.image = r.image);
+      } catch (x) { toast("Couldn't use that image: " + x.message); }
+    };
+    s.querySelectorAll("#picSeg button").forEach(x => x.classList.toggle("on", x.dataset.m === mode()));
+    $("picEmoji").style.display = mode() === "emoji" ? "" : "none";
+    $("picFile").style.display = mode() === "file" ? "" : "none";
+    refreshPicPreview();
+    s.querySelectorAll(".em span").forEach(x => x.onclick = () => edit(() => b.emoji = x.textContent));
+    s.querySelectorAll(".sw span").forEach(x => x.onclick = () => edit(() => b.color = x.dataset.c));
+    $("fType").onchange = e => edit(() => {
+      const v = e.target.value;
+      b.action = v === "open" ? { type: "open", target: "" } : v === "hotkey" ? { type: "hotkey", keys: "" } :
+                 v === "run" ? { type: "run", command: "" } : v === "media" ? { type: "media", command: "toggle" } :
+                 { type: "multi", steps: [b.action] };
+    });
+    $("fPage").onchange = e => edit(() => { const i = +e.target.value; const k = cur().buttons.indexOf(b); cur().buttons.splice(k, 1); pages()[i].buttons.push(b); page = i; });
+    $("delBtn").onclick = () => edit(() => { cur().buttons.splice(cur().buttons.indexOf(b), 1); sel = null; });
+    $("dupBtn").onclick = () => edit(() => { const c = JSON.parse(JSON.stringify(b)); c.id = "btn_" + Math.random().toString(36).slice(2, 8); c.label += " copy";
+      cur().buttons.splice(cur().buttons.indexOf(b) + 1, 0, c); sel = c.id; });
+    $("doneBtn").onclick = () => { sel = null; render(); };
+    $("testBtn").onclick = async () => { $("testRes").textContent = "Running…"; $("testRes").style.color = "";
+      try { const r = await api("/api/editor/test", { button: b }); $("testRes").textContent = r.ok ? "✓ Worked" : "✗ " + r.message;
+        $("testRes").style.color = r.ok ? "var(--ok)" : "var(--bad)"; } catch (e) { $("testRes").textContent = "Agent not reachable"; } };
+    renderActionFields(b, t);
+  }
+
+  function refreshPicPreview() {
+    const b = sel && cur().buttons.find(x => x.id === sel); const pv = $("picPrev"); if (!b || !pv) return;
+    pv.style.background = b.color || "#34495e";
+    const url = imageUrl(b);
+    pv.innerHTML = url ? `<img src="${esc(url)}" alt="">` : esc(b.emoji || fallbackEmoji(b));
+    $("picNote").textContent = b.image === "app"
+      ? (url ? "Real icon of what this tile opens." : "Looking for the icon… (actions like plain shortcuts have no app, so the emoji is used)")
+      : (b.image || "").startsWith("file:") ? "Your image (any PNG/JPG, resized to 256 px)." : "Emoji works everywhere, including the iPhone app.";
+  }
+
+  // resize any picture to a 256px PNG in the browser before uploading
+  function toPng(file) {
+    return new Promise((res, rej) => {
+      const img = new Image(); const url = URL.createObjectURL(file);
+      img.onload = () => { const n = 256, c = document.createElement("canvas"); c.width = c.height = n;
+        const k = Math.min(n / img.width, n / img.height), w = img.width * k, h = img.height * k;
+        c.getContext("2d").drawImage(img, (n - w) / 2, (n - h) / 2, w, h); URL.revokeObjectURL(url); res(c.toDataURL("image/png")); };
+      img.onerror = () => rej(new Error("not an image")); img.src = url;
+    });
+  }
+
+  function renderActionFields(b, t) {
+    const box = $("actionFields"), a = b.action;
+    const set = (k, v) => { undo.push(JSON.stringify(cfg)); $("undoBtn").disabled = false; if (v === "" || v === false) delete a[k]; else a[k] = v; queueSave(); };
+    if (t === "open") {
+      box.innerHTML = field("Folder, file, app or URL", `<div class="inline"><input type="text" id="aTarget" value="${esc(a.target || "")}" placeholder="C:\\Work\\Macros  ·  outlook.exe  ·  https://…">
+          <button class="btn" id="bFolder" title="Choose a folder">📁</button><button class="btn" id="bFile" title="Choose a file or app">📄</button></div>`,
+          "You can use %USERPROFILE%, e.g. %USERPROFILE%\\Documents");
+      box.insertAdjacentHTML("beforeend", field("Window", `<select id="aWin">
+          <option value="">Default (${cfg.open_window === "front" ? "bring to front" : cfg.open_window === "normal" ? "leave as is" : "maximised"})</option>
+          <option value="maximize">Maximised, in front</option><option value="front">Bring to front (keep size)</option>
+          <option value="normal">Leave as Windows opens it</option></select>`));
+      $("aWin").value = a.window || "";
+      const ioName = { ask: "ask on the phone", switch: "switch to it", new: "open a new one" }[cfg.if_open || "ask"];
+      box.insertAdjacentHTML("beforeend", field("If it's already open", `<select id="aIfOpen">
+          <option value="">Default (${ioName})</option>
+          <option value="ask">Ask on the phone: switch or open new</option>
+          <option value="switch">Switch to the open window</option>
+          <option value="new">Always open a new window</option></select>`,
+          "Checked for folders and apps. Web links and documents always just open."));
+      $("aIfOpen").value = a.if_open || "";
+      $("aIfOpen").onchange = e => set("if_open", e.target.value);
+      $("aWin").onchange = e => set("window", e.target.value);
+      $("aTarget").oninput = e => set("target", e.target.value);
+      const pick = async kind => { toast("A picker opened on your desktop…"); const r = await api("/api/editor/pick", { kind });
+        if (r.path) { $("aTarget").value = r.path; set("target", r.path); if (!b.label || b.label === "New tile") { b.label = r.path.split("\\").pop(); renderGrid(); $("fLabel").value = b.label; } } };
+      $("bFolder").onclick = () => pick("folder"); $("bFile").onclick = () => pick("file");
+    } else if (t === "hotkey") {
+      box.innerHTML = field("Keys", `<input type="text" id="aKeys" value="${esc(a.keys || "")}" placeholder="Click here, then press the shortcut">`,
+          "Click the box and press the keys (e.g. Ctrl+Shift+M). Win key: pick from the list or type win+…") +
+        field("", `<select id="aQuick">${QUICK.map(([k, n]) => `<option value="${k}">${n}</option>`).join("")}</select>`) +
+        field("Bring this app to the front first", `<select id="aFocus"><option value="">— no, send to whatever is active —</option>
+          ${profiles.map(p => `<option value="${p}" ${a.focus === p ? "selected" : ""}>${p === "teams" ? "Microsoft Teams (meeting window)" : p}</option>`).join("")}</select>`) +
+        `<div class="f"><label class="check"><input type="checkbox" id="aRestore" ${a.restore_focus ? "checked" : ""}> Switch back to my previous window afterwards</label></div>`;
+      const k = $("aKeys");
+      k.onkeydown = e => { e.preventDefault(); const m = keyName(e); if (!m) return;
+        const parts = [e.ctrlKey && "ctrl", e.shiftKey && "shift", e.altKey && "alt", e.metaKey && "win"].filter(Boolean);
+        if (!["ctrl", "shift", "alt", "win"].includes(m)) parts.push(m); k.value = parts.join("+"); set("keys", k.value); };
+      k.oninput = e => set("keys", e.target.value.toLowerCase().replace(/\s/g, ""));
+      $("aQuick").onchange = e => { if (!e.target.value) return; k.value = e.target.value; set("keys", k.value);
+        if (e.target.value.startsWith("ctrl+shift+") && "mokeh".includes(e.target.value.slice(-1))) { a.focus = "teams"; $("aFocus").value = "teams"; queueSave(); } };
+      $("aFocus").onchange = e => set("focus", e.target.value);
+      $("aRestore").onchange = e => set("restore_focus", e.target.checked);
+    } else if (t === "media") {
+      box.innerHTML = field("Command", `<select id="aMedia">
+          <option value="toggle">Play / pause</option><option value="next">Next track</option>
+          <option value="prev">Previous track</option><option value="stop">Stop</option>
+          <option value="shuffle">Shuffle</option><option value="repeat">Repeat</option></select>`,
+          "Controls whatever is playing on the laptop (YouTube Music, Spotify, a browser tab…) through Windows' media controls.");
+      $("aMedia").value = a.command || "toggle";
+      $("aMedia").onchange = e => set("command", e.target.value);
+    } else if (t === "run") {
+      box.innerHTML = field("Command line", `<input type="text" id="aCmd" value="${esc(typeof a.command === "string" ? a.command : JSON.stringify(a.command || ""))}" placeholder='powershell -File C:\\scripts\\job.ps1'>`) +
+        `<div class="f"><label class="check"><input type="checkbox" id="aShow" ${a.hidden === false ? "checked" : ""}> Show the command window</label></div>`;
+      $("aCmd").oninput = e => set("command", e.target.value);
+      if (/--app-id=|_crx_/i.test(typeof a.command === "string" ? a.command : "")) {      // installed web app (e.g. YouTube Music)
+        const ioName = { ask: "ask on the phone", switch: "switch to it", new: "open a new one" }[cfg.if_open || "ask"];
+        box.insertAdjacentHTML("beforeend", field("If this web app is already open", `<select id="aIfOpenRun">
+            <option value="">Default (${ioName})</option><option value="ask">Ask on the phone: switch or open new</option>
+            <option value="switch">Switch to the open window</option><option value="new">Always open a new window</option></select>`));
+        $("aIfOpenRun").value = a.if_open || "";
+        $("aIfOpenRun").onchange = e => set("if_open", e.target.value);
+      }
+      $("aShow").onchange = e => { if (e.target.checked) set("hidden", false); else { delete a.hidden; queueSave(); } };
+    } else {
+      box.innerHTML = field("Action JSON", `<textarea id="aJson">${esc(JSON.stringify(a, null, 2))}</textarea>`,
+        'e.g. {"type":"multi","steps":[{…},{…}],"delay_ms":200} — see README for all action types');
+      $("aJson").oninput = e => { try { const v = JSON.parse(e.target.value); if (!v.type) throw 0; undo.push(JSON.stringify(cfg)); b.action = v; e.target.style.borderColor = ""; queueSave(); }
+        catch (x) { e.target.style.borderColor = "var(--bad)"; } };
+    }
+  }
+
+  function keyName(e) {
+    const k = e.key, map = { Control: "ctrl", Shift: "shift", Alt: "alt", Meta: "win", " ": "space", Enter: "enter", Escape: "esc", Tab: "tab",
+      Backspace: "backspace", Delete: "delete", Insert: "insert", Home: "home", End: "end", PageUp: "pageup", PageDown: "pagedown",
+      ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down", PrintScreen: "printscreen",
+      AudioVolumeMute: "volume_mute", AudioVolumeUp: "volume_up", AudioVolumeDown: "volume_down", MediaPlayPause: "media_play_pause",
+      MediaTrackNext: "media_next", MediaTrackPrevious: "media_prev" };
+    if (map[k]) return map[k];
+    if (/^F\d{1,2}$/.test(k)) return k.toLowerCase();
+    if (/^Key[A-Z]$/.test(e.code)) return e.code.slice(3).toLowerCase();
+    if (/^Digit\d$/.test(e.code)) return e.code.slice(5);
+    return null;
+  }
+
+  const rowOpts = v => `<option value="">Auto (fit screen)</option>` +
+    [1, 2, 3, 4, 5, 6].map(n => `<option value="${n}" ${+v === n ? "selected" : ""}>${n}</option>`).join("");
+
+  function renderSettings(s) {
+    const p = cur();
+    s.innerHTML = `
+      <h2>Page</h2>
+      ${field("Page name", `<input type="text" id="pName" value="${esc(p.name)}">`)}
+      <div class="actions">
+        <button class="btn" id="pLeft" ${page === 0 ? "disabled" : ""}>◀ Move left</button>
+        <button class="btn" id="pRight" ${page === pages().length - 1 ? "disabled" : ""}>Move right ▶</button>
+        <button class="btn danger" id="pDel" ${pages().length < 2 ? "disabled" : ""}>Delete page</button>
+      </div>
+      <div class="actions" style="margin-top:10px">
+        <button class="btn" id="pApp">🖼 Use app icons on this page</button>
+        <button class="btn" id="pEmo">😀 Use emoji on this page</button>
+      </div>
+      <div class="sep"></div>
+      <h2>Deck</h2>
+      ${field("Title", `<input type="text" id="dTitle" value="${esc(cfg.title || "USB Deck")}">`)}
+      <div class="inline">
+        ${field("Tiles per row (portrait)", `<input type="number" min="1" max="8" id="dCols" value="${cfg.columns || 3}">`)}
+        ${field("Landscape", `<input type="number" min="1" max="10" id="dColsL" value="${cfg.columns_landscape || (cfg.columns || 3) + 2}">`)}
+      </div>
+      ${field("When a tile opens an app or folder", `<select id="dWin">
+          <option value="maximize">Maximise it and bring it to the front</option>
+          <option value="front">Bring it to the front (keep its size)</option>
+          <option value="normal">Leave it as Windows opens it</option></select>`, "Each tile can override this in its Window setting.")}
+      ${field("If that app or folder is already open", `<select id="dIfOpen">
+          <option value="ask">Ask on the phone: switch to it or open new</option>
+          <option value="switch">Switch to the open window</option>
+          <option value="new">Always open a new window</option></select>`)}
+      <div class="inline">
+        ${field("Rows per phone page (portrait)", `<select id="dRows">${rowOpts(cfg.rows)}</select>`)}
+        ${field("Landscape", `<select id="dRowsL">${rowOpts(cfg.rows_landscape)}</select>`)}
+      </div>
+      <div class="note" style="margin-top:-4px">Tiles keep one size. <b>Auto</b> fits as many rows as the phone's screen allows in each orientation; tiles that don't fit continue on an extra page you swipe to.</div>
+      <div class="note">Select a tile on the left to edit it, or drag tiles to rearrange.</div>`;
+    const live = (id, fn) => { $(id).oninput = e => { undo.push(JSON.stringify(cfg)); $("undoBtn").disabled = false; fn(e.target.value); renderTabs(); renderGrid(); queueSave(); }; };
+    live("pName", v => p.name = v || "Page");
+    live("dTitle", v => cfg.title = v);
+    $("dWin").value = cfg.open_window || "maximize";
+    $("dWin").onchange = e => change(() => cfg.open_window = e.target.value);
+    $("dIfOpen").value = cfg.if_open || "ask";
+    $("dIfOpen").onchange = e => change(() => cfg.if_open = e.target.value);
+    live("dCols", v => cfg.columns = Math.max(1, Math.min(8, +v || 3)));
+    live("dColsL", v => cfg.columns_landscape = Math.max(1, Math.min(10, +v || 5)));
+    $("dRows").onchange = e => change(() => { if (+e.target.value) cfg.rows = +e.target.value; else delete cfg.rows; });
+    $("dRowsL").onchange = e => change(() => { if (+e.target.value) cfg.rows_landscape = +e.target.value; else delete cfg.rows_landscape; });
+    $("pLeft").onclick = () => change(() => { const [x] = pages().splice(page, 1); pages().splice(page - 1, 0, x); page--; });
+    $("pRight").onclick = () => change(() => { const [x] = pages().splice(page, 1); pages().splice(page + 1, 0, x); page++; });
+    $("pApp").onclick = () => change(() => p.buttons.forEach(b => { if (!(b.image || "").startsWith("file:")) b.image = "app"; }));
+    $("pEmo").onclick = () => change(() => p.buttons.forEach(b => delete b.image));
+    $("pDel").onclick = () => { if (!confirm(`Delete page "${p.name}" and its ${p.buttons.length} tiles?`)) return;
+      change(() => { pages().splice(page, 1); page = Math.max(0, page - 1); }); };
+  }
+
+  // ------------------------------------------------------------------ status + controls
+  let lastVersion = null;
+  async function syncIfChangedElsewhere(st) {
+    const m = parseFloat(String(st.version).split(":")[0]);
+    if (base === null || saving || saveTimer && $("saveState").textContent === "Saving…" || Math.abs(m - base) < 1e-6) return;
+    try { const r = await api("/api/editor/state"); cfg = r.config; base = r.mtime; layout = r.layout;
+      if (page >= cfg.pages.length) page = 0; if (sel && !cur().buttons.some(b => b.id === sel)) sel = null;
+      render(); $("saveState").textContent = "↻ Updated from another change"; } catch (e) {}
+  }
+  function showStatus(st) {
+    syncIfChangedElsewhere(st);
+    if (lastVersion && st.version !== lastVersion) refreshLayout();
+    lastVersion = st.version;
+    const pvChanged = JSON.stringify((status || {}).phone_view) !== JSON.stringify(st.phone_view);
+    status = st;
+    if (pvChanged && cfg) renderGrid();
+    const chip = $("chip");
+    chip.className = "chip" + (st.paused ? " pause" : st.phone_online ? " on" : "");
+    $("chipText").textContent = st.paused ? `Paused (from ${st.paused_by || "?"})` : st.phone_online ? "Phone connected" : "Phone not connected";
+    $("link").textContent = st.adb_enabled ? "🔗 " + st.link : "⛔ " + st.link;
+    $("pauseBtn").textContent = st.paused ? "▶ Resume deck" : "⏸ Pause deck";
+    $("pauseBtn").className = "btn" + (st.paused ? " go" : "");
+    // offer manual connect when the phone isn't linked (office Wi-Fi blocks auto-discovery)
+    const linked = /linked over/i.test(st.link || "");
+    $("addrBox").style.display = st.adb_enabled && !linked ? "inline-flex" : "none";
+    $("discBtn").textContent = st.adb_enabled ? "⏏ Disconnect phone" : "🔌 Reconnect phone";
+    $("discBtn").className = "btn" + (st.adb_enabled ? " danger" : " go");
+    const log = $("log"), atBottom = log.scrollTop + log.clientHeight >= log.scrollHeight - 8;
+    log.innerHTML = (st.events || []).map(l => `<div class="${/ERR|error|failed/i.test(l) ? "err" : ""}">${esc(l)}</div>`).join("");
+    if (atBottom) log.scrollTop = log.scrollHeight;
+  }
+  $("addrBtn").onclick = async () => {
+    $("addrBtn").disabled = true; $("addrBtn").textContent = "Connecting…";
+    try { const r = await api("/api/editor/control", { action: "connect", address: $("addr").value });
+      toast(r.connect_ok ? "✓ Connected - linking the deck…" : "✗ " + (r.connect_msg || "Could not connect")); showStatus(r); }
+    catch (e) { toast("Agent not reachable"); }
+    $("addrBtn").disabled = false; $("addrBtn").textContent = "Connect";
+  };
+  $("addr").onkeydown = e => { if (e.key === "Enter") $("addrBtn").click(); };
+  $("pauseBtn").onclick = async () => showStatus(await api("/api/editor/control", { action: status?.paused ? "resume" : "pause" }));
+  $("discBtn").onclick = async () => showStatus(await api("/api/editor/control", { action: status?.adb_enabled ? "disconnect" : "reconnect" }));
+
+  async function poll() {
+    try { showStatus(await api("/api/editor/status")); }
+    catch (e) { $("chip").className = "chip"; $("chipText").textContent = "Agent not running"; }
+    setTimeout(poll, 1500);
+  }
+
+  async function init() {
+    try {
+      const r = await api("/api/editor/state");
+      cfg = r.config; base = r.mtime; layout = r.layout; profiles = r.focus_profiles || ["teams"];
+      if (!cfg.pages.length) cfg.pages.push({ name: "Page 1", buttons: [] });
+      render(); showStatus(r.status); poll();
+    } catch (e) { if (e.message !== "token") { $("chipText").textContent = "Agent not running"; setTimeout(init, 2000); } }
+  }
+  init();
+})();
+</script>
+</body>
+</html>

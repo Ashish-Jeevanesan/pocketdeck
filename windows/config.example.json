@@ -1,0 +1,321 @@
+{
+  "title": "USB Deck",
+  "columns": 3,
+  "columns_landscape": 5,
+  "iphone": false,
+  "android": {
+    "enabled": true,
+    "port": 2346,
+    "adb": true,
+    "adb_path": "%USERPROFILE%\\platform-tools\\adb.exe"
+  },
+  "open_window": "maximize",
+  "if_open": "ask",
+  "focus_profiles": {
+    "teams": {
+      "processes": [
+        "ms-teams.exe",
+        "teams.exe"
+      ],
+      "avoid_titles": [
+        "chat |",
+        "activity |",
+        "calendar |",
+        "teams |",
+        "calls |",
+        "files |",
+        "apps |",
+        "onedrive |",
+        "copilot |",
+        "people |",
+        "microsoft teams"
+      ],
+      "prefer_titles": [
+        "meeting",
+        "call",
+        "sharing"
+      ]
+    }
+  },
+  "pages": [
+    {
+      "name": "Teams",
+      "buttons": [
+        {
+          "id": "teams_mute",
+          "label": "Mute / Unmute",
+          "emoji": "🎙️",
+          "color": "#C0392B",
+          "action": {
+            "type": "hotkey",
+            "keys": "ctrl+shift+m",
+            "focus": "teams",
+            "restore_focus": true
+          }
+        },
+        {
+          "id": "teams_camera",
+          "label": "Camera On/Off",
+          "emoji": "📹",
+          "color": "#8E44AD",
+          "action": {
+            "type": "hotkey",
+            "keys": "ctrl+shift+o",
+            "focus": "teams",
+            "restore_focus": true
+          }
+        },
+        {
+          "id": "teams_share",
+          "label": "Share Screen",
+          "emoji": "🖥️",
+          "color": "#2471A3",
+          "action": {
+            "type": "hotkey",
+            "keys": "ctrl+shift+e",
+            "focus": "teams"
+          }
+        },
+        {
+          "id": "teams_hand",
+          "label": "Raise Hand",
+          "emoji": "✋",
+          "color": "#B9770E",
+          "action": {
+            "type": "hotkey",
+            "keys": "ctrl+shift+k",
+            "focus": "teams",
+            "restore_focus": true
+          }
+        },
+        {
+          "id": "teams_open",
+          "label": "Open Teams",
+          "emoji": "💬",
+          "color": "#4B53BC",
+          "image": "app",
+          "action": {
+            "type": "open",
+            "target": "msteams:"
+          }
+        },
+        {
+          "id": "teams_leave",
+          "label": "Leave Call",
+          "emoji": "📞",
+          "color": "#922B21",
+          "action": {
+            "type": "hotkey",
+            "keys": "ctrl+shift+h",
+            "focus": "teams"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Folders",
+      "buttons": [
+        {
+          "id": "fld_docs",
+          "label": "Documents",
+          "emoji": "📁",
+          "color": "#117A65",
+          "image": "app",
+          "action": {
+            "type": "open",
+            "target": "%USERPROFILE%\\Documents"
+          }
+        },
+        {
+          "id": "fld_downloads",
+          "label": "Downloads",
+          "emoji": "⬇️",
+          "color": "#148F77",
+          "image": "app",
+          "action": {
+            "type": "open",
+            "target": "%USERPROFILE%\\Downloads"
+          }
+        },
+        {
+          "id": "fld_desktop",
+          "label": "Desktop",
+          "emoji": "🖥️",
+          "color": "#1F618D",
+          "image": "app",
+          "action": {
+            "type": "open",
+            "target": "shell:Desktop"
+          }
+        },
+        {
+          "id": "fld_pictures",
+          "label": "Pictures",
+          "emoji": "🖼️",
+          "color": "#7D3C98",
+          "image": "app",
+          "action": {
+            "type": "open",
+            "target": "%USERPROFILE%\\Pictures"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Apps",
+      "buttons": [
+        {
+          "id": "app_outlook",
+          "label": "Outlook",
+          "emoji": "✉️",
+          "color": "#0F6CBD",
+          "image": "app",
+          "action": {
+            "type": "open",
+            "target": "outlook.exe"
+          }
+        },
+        {
+          "id": "app_excel",
+          "label": "Excel",
+          "emoji": "📊",
+          "color": "#107C41",
+          "image": "app",
+          "action": {
+            "type": "open",
+            "target": "excel.exe"
+          }
+        },
+        {
+          "id": "app_edge",
+          "label": "Edge",
+          "emoji": "🌐",
+          "color": "#0C7A8C",
+          "image": "app",
+          "action": {
+            "type": "open",
+            "target": "msedge.exe"
+          }
+        },
+        {
+          "id": "app_notepad",
+          "label": "Notepad",
+          "emoji": "📝",
+          "color": "#5D6D7E",
+          "image": "app",
+          "action": {
+            "type": "open",
+            "target": "notepad.exe"
+          }
+        },
+        {
+          "id": "app_calc",
+          "label": "Calculator",
+          "emoji": "🧮",
+          "color": "#424949",
+          "image": "app",
+          "action": {
+            "type": "open",
+            "target": "calc.exe"
+          }
+        },
+        {
+          "id": "app_taskmgr",
+          "label": "Task Manager",
+          "emoji": "📈",
+          "color": "#6C3483",
+          "image": "app",
+          "action": {
+            "type": "open",
+            "target": "taskmgr.exe"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Media",
+      "buttons": [
+        {
+          "id": "media_prev",
+          "label": "Previous",
+          "emoji": "⏮️",
+          "color": "#1A5276",
+          "action": {
+            "type": "media",
+            "command": "prev"
+          }
+        },
+        {
+          "id": "media_pp",
+          "label": "Play / Pause",
+          "emoji": "⏯️",
+          "color": "#1A5276",
+          "action": {
+            "type": "media",
+            "command": "toggle"
+          }
+        },
+        {
+          "id": "media_next",
+          "label": "Next",
+          "emoji": "⏭️",
+          "color": "#1A5276",
+          "action": {
+            "type": "media",
+            "command": "next"
+          }
+        },
+        {
+          "id": "vol_down",
+          "label": "Vol -",
+          "emoji": "🔉",
+          "color": "#34495E",
+          "action": {
+            "type": "hotkey",
+            "keys": "volume_down"
+          }
+        },
+        {
+          "id": "vol_mute",
+          "label": "Mute Speaker",
+          "emoji": "🔇",
+          "color": "#7B241C",
+          "action": {
+            "type": "hotkey",
+            "keys": "volume_mute"
+          }
+        },
+        {
+          "id": "vol_up",
+          "label": "Vol +",
+          "emoji": "🔊",
+          "color": "#34495E",
+          "action": {
+            "type": "hotkey",
+            "keys": "volume_up"
+          }
+        },
+        {
+          "id": "lock_pc",
+          "label": "Lock PC",
+          "emoji": "🔒",
+          "color": "#212F3D",
+          "action": {
+            "type": "run",
+            "command": "rundll32.exe user32.dll,LockWorkStation"
+          }
+        },
+        {
+          "id": "snip",
+          "label": "Screenshot",
+          "emoji": "✂️",
+          "color": "#5B2C6F",
+          "action": {
+            "type": "hotkey",
+            "keys": "win+shift+s"
+          }
+        }
+      ]
+    }
+  ]
+}
