@@ -9,6 +9,7 @@ windows/Claude outputs/
 
 # --- build output: publish as GitHub Releases instead ----------------------------
 share/
+dist/
 *.zip
 *.ipa
 ios/build/
