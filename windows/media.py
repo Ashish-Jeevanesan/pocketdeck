@@ -77,14 +77,46 @@ class Media:
             return
         if os.name != "nt":
             return
+        if self._try_import():
+            threading.Thread(target=self._run, name="media", daemon=True).start()
+        else:
+            # Early after logon the per-user add-on folder can be briefly unreadable; Python then
+            # remembers "not found" for good. Keep retrying for a while instead of giving up.
+            threading.Thread(target=self._retry_import, name="media-retry", daemon=True).start()
+
+    def _try_import(self, quiet=False):
+        import importlib
+        import sys
         _add_user_site()
+        importlib.invalidate_caches()
+        for k in [k for k, v in sys.path_importer_cache.items() if v is None]:
+            del sys.path_importer_cache[k]          # forget earlier "folder not found" results
+        for m in [m for m in sys.modules if m == "winrt" or m.startswith("winrt.")]:
+            if sys.modules[m] is None:
+                del sys.modules[m]
         try:
             from winrt.windows.media.control import GlobalSystemMediaTransportControlsSessionManager  # noqa
             self.available = True
+            return True
         except Exception as e:
-            self.log("[media] Windows media controls not available (%s) - using media keys only" % e)
-            return
-        threading.Thread(target=self._run, name="media", daemon=True).start()
+            if not quiet:
+                sp = [p for p in sys.path if "site-packages" in p]
+                self.log("[media] music add-on not loaded yet (%s); site-packages seen: %s; "
+                         "APPDATA=%s - retrying for 10 minutes"
+                         % (e, ["%s%s" % (p, "" if os.path.isdir(p) else " (missing)") for p in sp],
+                            os.environ.get("APPDATA")))
+            return False
+
+    def _retry_import(self):
+        for _ in range(40):                          # every 15 s for 10 minutes
+            time.sleep(15)
+            if self._try_import(quiet=True):
+                self.log("[media] music add-on loaded - now playing is on")
+                self._run()
+                return
+        self.log("[media] music add-on still not loading - using media keys only. "
+                 "Run: py -m pip install --user winrt-runtime winrt-Windows.Media.Control "
+                 "winrt-Windows.Storage.Streams winrt-Windows.Foundation winrt-Windows.Foundation.Collections")
 
     # ------------------------------------------------------------------ public
     def snapshot(self):
